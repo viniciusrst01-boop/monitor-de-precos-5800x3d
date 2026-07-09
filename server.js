@@ -895,6 +895,120 @@ async function fetchPage(url) {
   }
 }
 
+function isMercadoLivreUrl(value) {
+  try {
+    return /(^|\.)mercadolivre\.com\.br$/i.test(new URL(String(value || "")).hostname);
+  } catch {
+    return false;
+  }
+}
+
+function mercadoLivreItemIdFromUrl(value) {
+  const text = String(value || "");
+  const candidates = [
+    ...text.matchAll(/(?:^|[?&#])wid=(MLB\d+)/gi),
+    ...text.matchAll(/\/(?:p|up)\/(MLB[A-Z]?\d+)/gi),
+    ...text.matchAll(/\b(MLB\d{6,})\b/gi)
+  ];
+  const item = candidates.map((match) => String(match[1] || "").toUpperCase()).find((id) => /^MLB\d+$/.test(id));
+  return item || "";
+}
+
+function mercadoLivreSearchQueryFromUrl(value) {
+  const hint = productHintFromUrl(value);
+  if (hint && /5800x3d/i.test(hint)) return hint;
+  return "ryzen 7 5800x3d anniversary";
+}
+
+async function fetchJson(url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 18000);
+  try {
+    const response = await fetch(url, {
+      redirect: "follow",
+      signal: controller.signal,
+      headers: {
+        "accept": "application/json,text/plain,*/*",
+        "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+        "cache-control": "no-cache",
+        "user-agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36"
+      }
+    });
+    const text = await response.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = null;
+    }
+    return { ok: response.ok, status: response.status, finalUrl: response.url, data, text };
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error("timeout ao consultar API");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function fetchMercadoLivreFallback(source) {
+  if (!isMercadoLivreUrl(source.url)) return null;
+
+  const itemId = mercadoLivreItemIdFromUrl(source.url);
+  const itemResult = itemId ? await fetchMercadoLivreItem(itemId, source.url).catch((error) => ({ error })) : null;
+  if (itemResult?.price || itemResult?.title) return itemResult;
+
+  const searchResult = await fetchMercadoLivreSearch(source.url, itemId).catch((error) => ({ error }));
+  if (searchResult?.price || searchResult?.title) return searchResult;
+
+  return null;
+}
+
+async function fetchMercadoLivreItem(itemId, sourceUrl) {
+  const response = await fetchJson(`https://api.mercadolibre.com/items/${encodeURIComponent(itemId)}`);
+  if (!response.ok || !response.data) return null;
+
+  const item = response.data;
+  return mercadoLivreSnapshotFromApiItem(item, sourceUrl, "mercado-livre-api-item");
+}
+
+async function fetchMercadoLivreSearch(sourceUrl, preferredItemId = "") {
+  const query = encodeURIComponent(mercadoLivreSearchQueryFromUrl(sourceUrl));
+  const response = await fetchJson(`https://api.mercadolibre.com/sites/MLB/search?q=${query}&limit=20`);
+  if (!response.ok || !Array.isArray(response.data?.results)) return null;
+
+  const preferred = preferredItemId
+    ? response.data.results.find((item) => String(item.id || "").toUpperCase() === preferredItemId)
+    : null;
+  const matched =
+    preferred ||
+    response.data.results.find((item) => {
+      const match = evaluateProductMatch(String(item.title || ""), String(item.title || ""));
+      return match.strictOk;
+    });
+
+  return matched ? mercadoLivreSnapshotFromApiItem(matched, sourceUrl, "mercado-livre-api-search") : null;
+}
+
+function mercadoLivreSnapshotFromApiItem(item, sourceUrl, priceSource) {
+  const title = String(item.title || productHintFromUrl(sourceUrl) || "").trim();
+  const price = parseLocalizedNumber(item.price, "BRL");
+  const currency = String(item.currency_id || "BRL").toUpperCase();
+  const statusText = [item.status, item.available_quantity > 0 ? "available" : ""].filter(Boolean).join(" ");
+  const match = evaluateProductMatch(title, title);
+
+  return {
+    title,
+    price: currency === DEFAULT_CURRENCY ? price : null,
+    currency: currency === DEFAULT_CURRENCY ? currency : DEFAULT_CURRENCY,
+    priceSource,
+    stockStatus: detectStockStatus(statusText, []),
+    match
+  };
+}
+
 async function scanSource(source) {
   const startedAt = nowIso();
   const snapshotBase = {
@@ -919,7 +1033,22 @@ async function scanSource(source) {
       throw new Error(`HTTP ${fetched.status}`);
     }
 
-    const data = extractProductData(fetched.body, DEFAULT_CURRENCY, source.url);
+    let data = extractProductData(fetched.body, DEFAULT_CURRENCY, source.url);
+    const mercadoLivreFallback =
+      isMercadoLivreUrl(source.url) && (!data.price || data.title === productHintFromUrl(source.url))
+        ? await fetchMercadoLivreFallback(source)
+        : null;
+    if (mercadoLivreFallback?.price || mercadoLivreFallback?.match?.confidence > data.match.confidence) {
+      data = {
+        ...data,
+        ...mercadoLivreFallback,
+        title: mercadoLivreFallback.title || data.title,
+        match: mercadoLivreFallback.match?.confidence > data.match.confidence ? mercadoLivreFallback.match : data.match,
+        price: mercadoLivreFallback.price || data.price,
+        priceSource: mercadoLivreFallback.priceSource || data.priceSource,
+        stockStatus: mercadoLivreFallback.stockStatus || data.stockStatus
+      };
+    }
     const requireStrict = state.settings.requireAnniversarySignals !== false;
     const accepted = requireStrict ? data.match.strictOk : data.match.ok;
     const snapshot = {
