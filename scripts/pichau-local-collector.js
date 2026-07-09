@@ -127,7 +127,10 @@ function parseBRPrice(value) {
 }
 
 function stockStatusFromText(value) {
-  const text = String(value || "").toLowerCase();
+  const text = String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
   if (/sem estoque|indisponivel|esgotado/.test(text)) return "out_of_stock";
   if (/pre-venda|pre venda/.test(text)) return "preorder";
   if (/produto disponivel|comprar|colocar no carrinho/.test(text)) return "in_stock";

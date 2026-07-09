@@ -139,11 +139,11 @@ function renderMetrics() {
     : "Sem leituras ainda";
 
   elements.activeSources.textContent = `${active.length}/${sources.length}`;
-  const errors = active.filter((source) => source.lastStatus === "error").length;
+  const errors = active.filter((source) => source.lastStatus === "error" && !isLocalCollectorState(source)).length;
   const mismatches = active.filter((source) => {
     const latest = latestForSource(source.id);
     return (
-      !isWaitingForLocalCollector(source, latest) &&
+      !isLocalCollectorState(source) &&
       ["wrong_product", "base_model_unconfirmed", "not_matched", "no_price"].includes(source.lastStatus)
     );
   }).length;
@@ -198,9 +198,10 @@ function renderSources() {
     const form = row.querySelector(".source-controls");
 
     title.textContent = source.store;
-    const waitingForLocalCollector = isWaitingForLocalCollector(source, latest);
-    badge.textContent = waitingForLocalCollector ? "coletor local" : statusLabel(source.lastStatus);
-    badge.className = `status-pill ${waitingForLocalCollector ? "warning" : statusTone(source.lastStatus)}`;
+    const localCollectorState = isLocalCollectorState(source);
+    const waitingForLocalCollector = localCollectorState && !latest;
+    badge.textContent = localCollectorState ? (latest ? "via coletor" : "coletor local") : statusLabel(source.lastStatus);
+    badge.className = `status-pill ${localCollectorState ? (latest ? "success" : "warning") : statusTone(source.lastStatus)}`;
     link.href = source.url;
     link.textContent = source.url;
     form.targetPrice.value = source.targetPrice || "";
@@ -224,11 +225,11 @@ function renderSources() {
 }
 
 function isWaitingForLocalCollector(source, latest) {
-  return (
-    !latest &&
-    source.localCollector === true &&
-    ["error", "no_price"].includes(source.lastStatus)
-  );
+  return !latest && isLocalCollectorState(source);
+}
+
+function isLocalCollectorState(source) {
+  return source.localCollector === true && ["error", "no_price"].includes(source.lastStatus);
 }
 
 function latestForSource(sourceId) {
