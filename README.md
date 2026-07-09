@@ -51,6 +51,6 @@ O app esta pronto para hospedar em um servico Node.js persistente, como Render o
 
 1. Suba este repositorio para o GitHub.
 2. No Render, crie um novo `Blueprint` apontando para o repositorio.
-3. O arquivo `render.yaml` cria o servico web e um disco persistente em `/var/data`.
+3. O arquivo `render.yaml` cria o servico web no plano gratuito.
 
-O historico fica no caminho configurado por `DATA_DIR`. Localmente, ele usa `./data`; no Render, usa `/var/data`.
+O historico fica no caminho configurado por `DATA_DIR`. Localmente, ele usa `./data`; no Render gratuito, usa `/tmp/price-monitor-data`, que pode ser apagado quando o servico reinicia. Para historico permanente em producao, troque para um plano com disco persistente e use `DATA_DIR=/var/data`.
