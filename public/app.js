@@ -1,11 +1,12 @@
 const app = {
   data: null,
   lastAlertIds: new Set(),
+  chartDays: 40,
   pollingHandle: null
 };
 
 const currencyFormatterCache = new Map();
-const sourceColors = ["#0f766e", "#2563eb", "#b7791f", "#b42318", "#7c3aed", "#18794e"];
+const sourceColors = ["#00a8a8", "#2563eb", "#b7791f", "#b42318", "#7c3aed", "#18794e"];
 
 const elements = {
   chipCanvas: document.querySelector("#chipCanvas"),
@@ -22,8 +23,9 @@ const elements = {
   markAlertsRead: document.querySelector("#markAlertsRead"),
   priceChart: document.querySelector("#priceChart"),
   emptyChart: document.querySelector("#emptyChart"),
-  chartLegend: document.querySelector("#chartLegend"),
   chartReadouts: document.querySelector("#chartReadouts"),
+  priceInsightCard: document.querySelector("#priceInsightCard"),
+  rangeTabs: document.querySelector("#rangeTabs"),
   sourceForm: document.querySelector("#sourceForm"),
   settingsForm: document.querySelector("#settingsForm"),
   notifyButton: document.querySelector("#notifyButton"),
@@ -362,144 +364,124 @@ function renderChart() {
 
   const width = canvas.width / dpr;
   const height = canvas.height / dpr;
-  const padding = { top: 18, right: 28, bottom: 40, left: 74 };
-  let entries = acceptedHistory();
-
-  entries = entries.sort((a, b) => new Date(a.checkedAt) - new Date(b.checkedAt));
-  elements.emptyChart.style.display = entries.length ? "none" : "grid";
+  const padding = { top: 30, right: 38, bottom: 48, left: 64 };
+  const entries = priceSeriesForCurrentRange();
 
   ctx.clearRect(0, 0, width, height);
-  drawGrid(ctx, width, height, padding);
+  drawCleanGrid(ctx, width, height, padding);
+  elements.emptyChart.style.display = entries.length ? "none" : "grid";
   if (!entries.length) {
-    renderChartDetails([], []);
+    renderChartDetails([]);
+    renderInsightCard(null, []);
     return;
   }
 
   const minTime = new Date(entries[0].checkedAt).getTime();
   const maxTime = new Date(entries[entries.length - 1].checkedAt).getTime();
+  const useSequenceScale = entries.length > 1 && maxTime - minTime < 60 * 60 * 1000;
   const prices = entries.map((entry) => Number(entry.price));
   const minPrice = Math.min(...prices);
   const maxPrice = Math.max(...prices);
-  const yMin = minPrice === maxPrice ? Math.max(0, minPrice * 0.92) : minPrice * 0.96;
-  const yMax = minPrice === maxPrice ? maxPrice * 1.08 + 1 : maxPrice * 1.04;
-  const sourceIds = [...new Set(entries.map((entry) => entry.sourceId))];
-  renderChartDetails(entries, sourceIds);
+  const yMin = Math.max(0, Math.floor((minPrice * 0.84) / 50) * 50);
+  const yMax = Math.ceil((maxPrice * 1.16) / 50) * 50;
+  renderChartDetails(entries);
+  renderInsightCard(entries[entries.length - 1], entries);
 
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
   const xFor = (entry) => {
+    if (useSequenceScale) {
+      return padding.left + (entry.chartIndex / Math.max(entries.length - 1, 1)) * plotWidth;
+    }
     if (maxTime === minTime) return padding.left + plotWidth / 2;
     return padding.left + ((new Date(entry.checkedAt).getTime() - minTime) / (maxTime - minTime)) * plotWidth;
   };
   const yFor = (entry) => padding.top + (1 - (entry.price - yMin) / (yMax - yMin)) * plotHeight;
 
-  drawAxisLabels(ctx, width, height, padding, entries, yMin, yMax);
-
-  sourceIds.forEach((sourceId, index) => {
-    const lineEntries = entries.filter((entry) => entry.sourceId === sourceId);
-    const color = sourceColors[index % sourceColors.length];
-    ctx.beginPath();
-    lineEntries.forEach((entry, pointIndex) => {
-      const x = xFor(entry);
-      const y = yFor(entry);
-      if (pointIndex === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    });
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2.5;
-    ctx.stroke();
-
-    lineEntries.forEach((entry) => {
-      ctx.beginPath();
-      ctx.arc(xFor(entry), yFor(entry), 4, 0, Math.PI * 2);
-      ctx.fillStyle = color;
-      ctx.fill();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = "#fff";
-      ctx.stroke();
-    });
-
-    if (entries.length <= 8) {
-      lineEntries.forEach((entry) => {
-        drawPointLabel(ctx, entry, color, xFor(entry), yFor(entry), width, padding);
-      });
-    }
-  });
+  drawHistoryArea(ctx, entries, xFor, yFor, height, padding);
+  drawHistoryLine(ctx, entries, xFor, yFor);
+  drawCleanAxisLabels(ctx, width, height, padding, entries, yMin, yMax);
+  drawCurrentPriceCallout(ctx, entries[entries.length - 1], xFor, yFor, width, padding);
 }
 
-function renderChartDetails(entries, sourceIds) {
-  elements.chartLegend.innerHTML = "";
+function priceSeriesForCurrentRange() {
+  const sorted = acceptedHistory().sort((a, b) => new Date(a.checkedAt) - new Date(b.checkedAt));
+  if (!sorted.length) return [];
+
+  const now = Date.now();
+  const cutoff = now - app.chartDays * 24 * 60 * 60 * 1000;
+  const filtered = sorted.filter((entry) => new Date(entry.checkedAt).getTime() >= cutoff);
+  const rangeEntries = filtered.length ? filtered : sorted;
+  return rangeEntries.map((entry, index) => ({ ...entry, chartIndex: index }));
+}
+
+function renderChartDetails(entries) {
   elements.chartReadouts.innerHTML = "";
 
   if (!entries.length) return;
 
-  sourceIds.forEach((sourceId, index) => {
-    const item = document.createElement("span");
-    item.className = "legend-item";
-    item.innerHTML = `
-      <span class="legend-dot" style="background:${sourceColors[index % sourceColors.length]}"></span>
-      <span>${escapeHtml(sourceName(sourceId))}</span>
-    `;
-    elements.chartLegend.append(item);
-  });
+  const latest = entries[entries.length - 1];
+  const first = entries[0];
+  const average = entries.reduce((sum, entry) => sum + Number(entry.price), 0) / entries.length;
+  const min = entries.reduce((winner, entry) => (Number(entry.price) < Number(winner.price) ? entry : winner), latest);
+  const items = [
+    ["Agora", latest, sourceName(latest.sourceId)],
+    ["Média do período", { ...latest, price: average }, `${entries.length} leitura(s)`],
+    ["Menor preço", min, sourceName(min.sourceId)]
+  ];
 
-  sourceIds.forEach((sourceId, index) => {
-    const sourceEntries = entries.filter((entry) => entry.sourceId === sourceId);
-    const latest = sourceEntries[sourceEntries.length - 1];
-    const previous = sourceEntries[sourceEntries.length - 2];
-    const trend = calculateTrend(latest, previous);
-    const color = sourceColors[index % sourceColors.length];
+  for (const [label, entry, meta] of items) {
     const item = document.createElement("article");
     item.className = "chart-readout-item";
     item.innerHTML = `
       <div class="readout-topline">
         <span class="readout-store">
-          <span class="legend-dot" style="background:${color}"></span>
-          <span>${escapeHtml(sourceName(sourceId))}</span>
+          <span class="legend-dot" style="background:#00a8a8"></span>
+          <span>${escapeHtml(label)}</span>
         </span>
-        <strong class="${trend.className}">${trend.label}</strong>
+        <strong>${formatDate(entry.checkedAt || first.checkedAt)}</strong>
       </div>
-      <span class="readout-price">${formatCurrency(latest.price, latest.currency)}</span>
-      <span class="readout-meta">${formatDate(latest.checkedAt)} · ${stockLabel(latest.stockStatus)}</span>
+      <span class="readout-price">${formatCurrency(entry.price, "BRL")}</span>
+      <span class="readout-meta">${escapeHtml(meta)}</span>
     `;
     elements.chartReadouts.append(item);
-  });
+  }
 }
 
-function drawPointLabel(ctx, entry, color, x, y, width, padding) {
-  const label = `${sourceName(entry.sourceId)} · ${formatCurrency(entry.price, entry.currency)}`;
-  ctx.save();
-  ctx.font = "12px Inter, system-ui, sans-serif";
-  const textWidth = ctx.measureText(label).width;
-  const boxWidth = textWidth + 14;
-  const boxHeight = 24;
-  let labelX = x + 10;
-  let labelY = y - 32;
-
-  if (labelX + boxWidth > width - padding.right) {
-    labelX = x - boxWidth - 10;
-  }
-  if (labelY < padding.top) {
-    labelY = y + 10;
+function renderInsightCard(latest, entries) {
+  if (!latest || !entries.length) {
+    elements.priceInsightCard.innerHTML = `
+      <div class="insight-title-row">
+        <span class="insight-icon blue">i</span>
+        <strong>Aguardando histórico</strong>
+      </div>
+      <p>Assim que houver leituras suficientes, mostramos se o preço está bom.</p>
+    `;
+    return;
   }
 
-  ctx.fillStyle = "rgba(255, 255, 255, 0.94)";
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 1;
-  roundRect(ctx, labelX, labelY, boxWidth, boxHeight, 7);
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = "#1f2524";
-  ctx.textAlign = "left";
-  ctx.textBaseline = "middle";
-  ctx.fillText(label, labelX + 7, labelY + boxHeight / 2);
-  ctx.restore();
+  const average = entries.reduce((sum, entry) => sum + Number(entry.price), 0) / entries.length;
+  const delta = Number(latest.price) - average;
+  const percent = average ? delta / average : 0;
+  const label = percent <= -0.04 ? "ótimo" : percent <= 0.04 ? "bom" : "alto";
+  const marker = Math.max(8, Math.min(92, 50 + percent * 240));
+  elements.priceInsightCard.innerHTML = `
+    <div class="insight-title-row">
+      <span class="insight-icon blue">⌁</span>
+      <strong>O preço está ${label}</strong>
+    </div>
+    <p>Com base nos últimos ${app.chartDays} dias, o valor está próximo da média de ${formatCurrency(average, "BRL")}.</p>
+    <div class="quality-track" aria-hidden="true">
+      <span class="quality-marker" style="left:${marker}%"></span>
+      <span class="quality-dot" style="left:${marker}%"></span>
+    </div>
+  `;
 }
 
-function drawGrid(ctx, width, height, padding) {
+function drawCleanGrid(ctx, width, height, padding) {
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, width, height);
-  ctx.strokeStyle = "#e4e8e5";
+  ctx.strokeStyle = "#ebeeee";
   ctx.lineWidth = 1;
   for (let i = 0; i <= 4; i += 1) {
     const y = padding.top + ((height - padding.top - padding.bottom) / 4) * i;
@@ -508,16 +490,49 @@ function drawGrid(ctx, width, height, padding) {
     ctx.lineTo(width - padding.right, y);
     ctx.stroke();
   }
-  ctx.strokeStyle = "#cfd7d2";
-  ctx.strokeRect(
-    padding.left,
-    padding.top,
-    width - padding.left - padding.right,
-    height - padding.top - padding.bottom
-  );
+  ctx.strokeStyle = "#d6d9d7";
+  ctx.beginPath();
+  ctx.moveTo(padding.left, height - padding.bottom);
+  ctx.lineTo(width - padding.right, height - padding.bottom);
+  ctx.stroke();
 }
 
-function drawAxisLabels(ctx, width, height, padding, entries, yMin, yMax) {
+function drawHistoryArea(ctx, entries, xFor, yFor, height, padding) {
+  const gradient = ctx.createLinearGradient(0, padding.top, 0, height - padding.bottom);
+  gradient.addColorStop(0, "rgba(0, 168, 168, 0.2)");
+  gradient.addColorStop(0.65, "rgba(0, 168, 168, 0.08)");
+  gradient.addColorStop(1, "rgba(0, 168, 168, 0)");
+
+  ctx.beginPath();
+  entries.forEach((entry, index) => {
+    const x = xFor(entry);
+    const y = yFor(entry);
+    if (index === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.lineTo(xFor(entries[entries.length - 1]), height - padding.bottom);
+  ctx.lineTo(xFor(entries[0]), height - padding.bottom);
+  ctx.closePath();
+  ctx.fillStyle = gradient;
+  ctx.fill();
+}
+
+function drawHistoryLine(ctx, entries, xFor, yFor) {
+  ctx.beginPath();
+  entries.forEach((entry, index) => {
+    const x = xFor(entry);
+    const y = yFor(entry);
+    if (index === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = "#00a8a8";
+  ctx.lineWidth = 3;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.stroke();
+}
+
+function drawCleanAxisLabels(ctx, width, height, padding, entries, yMin, yMax) {
   const currency = "BRL";
   ctx.fillStyle = "#65716f";
   ctx.font = "12px Inter, system-ui, sans-serif";
@@ -533,9 +548,71 @@ function drawAxisLabels(ctx, width, height, padding, entries, yMin, yMax) {
   const last = entries[entries.length - 1];
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
-  ctx.fillText(formatDate(first.checkedAt), padding.left, height - padding.bottom + 12);
+  ctx.fillText(formatChartDate(first.checkedAt), padding.left, height - padding.bottom + 14);
   ctx.textAlign = "right";
-  ctx.fillText(formatDate(last.checkedAt), width - padding.right, height - padding.bottom + 12);
+  ctx.fillText("Hoje", width - padding.right, height - padding.bottom + 14);
+  if (entries.length > 2) {
+    ctx.textAlign = "center";
+    const middle = entries[Math.floor(entries.length / 2)];
+    ctx.fillText(formatChartDate(middle.checkedAt), width / 2, height - padding.bottom + 14);
+  }
+}
+
+function drawCurrentPriceCallout(ctx, latest, xFor, yFor, width, padding) {
+  const x = xFor(latest);
+  const y = yFor(latest);
+  const label = formatCurrency(latest.price, latest.currency).replace("R$", "R$ ");
+  const sublabel = "AGORA";
+  const boxWidth = 112;
+  const boxHeight = 64;
+  const boxX = Math.min(Math.max(padding.left, x - boxWidth - 12), width - padding.right - boxWidth);
+  const boxY = Math.max(padding.top, y - boxHeight - 18);
+
+  ctx.save();
+  ctx.setLineDash([5, 4]);
+  ctx.strokeStyle = "#d8dcda";
+  ctx.beginPath();
+  ctx.moveTo(x, padding.top);
+  ctx.lineTo(x, y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = "#ffffff";
+  ctx.strokeStyle = "#ebecef";
+  ctx.lineWidth = 1;
+  roundRect(ctx, boxX, boxY, boxWidth, boxHeight, 7);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#5b2aa0";
+  ctx.font = "800 19px Inter, system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, boxX + boxWidth / 2, boxY + 24);
+  ctx.fillStyle = "#505a57";
+  ctx.font = "12px Inter, system-ui, sans-serif";
+  ctx.fillText(sublabel, boxX + boxWidth / 2, boxY + 44);
+
+  ctx.beginPath();
+  ctx.arc(x, y, 9, 0, Math.PI * 2);
+  ctx.fillStyle = "#5b2aa0";
+  ctx.fill();
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(x, y, 3, 0, Math.PI * 2);
+  ctx.fillStyle = "#fff";
+  ctx.fill();
+  ctx.restore();
+}
+
+function formatChartDate(value) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "short"
+  })
+    .format(new Date(value))
+    .replace(".", "");
 }
 
 function drawChip() {
@@ -667,6 +744,15 @@ function maybeNotifyNewAlerts(previousAlertIds, alerts) {
 
 elements.scanButton.addEventListener("click", scanAll);
 elements.refreshButton.addEventListener("click", () => loadState());
+elements.rangeTabs.addEventListener("click", (event) => {
+  const button = event.target.closest(".range-tab");
+  if (!button) return;
+  app.chartDays = Number(button.dataset.days || 40);
+  elements.rangeTabs.querySelectorAll(".range-tab").forEach((tab) => {
+    tab.classList.toggle("active", tab === button);
+  });
+  renderChart();
+});
 elements.markAlertsRead.addEventListener("click", async () => {
   await api("/api/alerts/read", { method: "POST", body: "{}" });
   await loadState({ silent: true });

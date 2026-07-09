@@ -49,18 +49,30 @@
 
         <section class="main-grid">
           <div class="panel history-panel">
-            <div class="panel-header">
-              <div>
-                <p class="eyebrow">Histórico</p>
-                <h2>Preço por fonte</h2>
+            <div class="price-history-layout">
+              <div class="price-history-main">
+                <div class="panel-header">
+                  <div>
+                    <p class="eyebrow">Histórico</p>
+                    <h2>Histórico de Preços</h2>
+                  </div>
+                  <span class="currency-lock">BRL · R$</span>
+                </div>
+                <div class="chart-wrap">
+                  <canvas id="priceChart" height="320" aria-label="Gráfico de histórico de preço"></canvas>
+                  <div id="emptyChart" class="empty-chart">Nenhum preço aceito foi registrado ainda.</div>
+                </div>
+                <div id="rangeTabs" class="range-tabs" aria-label="Período do histórico">
+                  <button class="range-tab active" type="button" data-days="40">40 dias</button>
+                  <button class="range-tab" type="button" data-days="90">3 meses</button>
+                  <button class="range-tab" type="button" data-days="180">6 meses</button>
+                  <button class="range-tab" type="button" data-days="365">1 ano</button>
+                </div>
               </div>
-              <span class="currency-lock">BRL · R$</span>
+              <aside class="price-history-side">
+                <article id="priceInsightCard" class="insight-card"></article>
+              </aside>
             </div>
-            <div class="chart-wrap">
-              <canvas id="priceChart" height="320" aria-label="Gráfico de histórico de preço"></canvas>
-              <div id="emptyChart" class="empty-chart">Nenhum preço aceito foi registrado ainda.</div>
-            </div>
-            <div id="chartLegend" class="chart-legend"></div>
             <div id="chartReadouts" class="chart-readouts"></div>
           </div>
 

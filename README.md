@@ -42,3 +42,15 @@ No fim da pagina existe um bloco isolado para fontes de fora do Brasil. Ele serv
 ## Alertas
 
 O painel mostra alertas no app e tambem pode enviar um POST para um webhook configurado em `Configuracoes`.
+
+## Publicar online
+
+O app esta pronto para hospedar em um servico Node.js persistente, como Render ou Railway.
+
+### Render
+
+1. Suba este repositorio para o GitHub.
+2. No Render, crie um novo `Blueprint` apontando para o repositorio.
+3. O arquivo `render.yaml` cria o servico web e um disco persistente em `/var/data`.
+
+O historico fica no caminho configurado por `DATA_DIR`. Localmente, ele usa `./data`; no Render, usa `/var/data`.

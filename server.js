@@ -7,7 +7,7 @@ const { URL } = require("node:url");
 const PORT = Number(process.env.PORT || 5174);
 const ROOT_DIR = __dirname;
 const PUBLIC_DIR = path.join(ROOT_DIR, "public");
-const DATA_DIR = path.join(ROOT_DIR, "data");
+const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(ROOT_DIR, "data");
 const STATE_FILE = path.join(DATA_DIR, "state.json");
 const BRAZIL_SEED_VERSION = "br-2";
 const INTERNATIONAL_SEED_VERSION = "intl-1";
@@ -62,7 +62,7 @@ const DEFAULT_STATE = {
       id: "kabum-5800x3d-pof",
       store: "KaBuM!",
       url: "https://www.kabum.com.br/produto/1053076/processador-amd-ryzen-7-5800x3d-3-4ghz-turbo-4-5ghz-96mb-cache-am4-100-100000651pof",
-      targetPrice: 2500,
+      targetPrice: 1999.99,
       currency: DEFAULT_CURRENCY,
       active: true,
       notes: "Pagina brasileira com codigo 100-100000651POF.",
@@ -72,7 +72,7 @@ const DEFAULT_STATE = {
       id: "pichau-5800x3d-busca",
       store: "Pichau",
       url: "https://www.pichau.com.br/search?q=Ryzen%207%205800X3D%20100-100000651POF",
-      targetPrice: 2500,
+      targetPrice: 1999.99,
       currency: DEFAULT_CURRENCY,
       active: true,
       notes: "Busca da loja; pode aparecer como bloqueada se a protecao anti-bot impedir leitura.",
@@ -82,7 +82,7 @@ const DEFAULT_STATE = {
       id: "terabyte-5800x3d-busca",
       store: "TerabyteShop",
       url: "https://www.terabyteshop.com.br/busca?str=Ryzen%207%205800X3D%20100-100000651POF",
-      targetPrice: 2500,
+      targetPrice: 1999.99,
       currency: DEFAULT_CURRENCY,
       active: true,
       notes: "Busca da loja; a pagina direta encontrada era do 5800X3D WOF comum, entao fica no modo rigido.",
@@ -92,7 +92,7 @@ const DEFAULT_STATE = {
       id: "gk-5800x3d-10th",
       store: "GK Info Store",
       url: "https://www.gkinfostore.com.br/processador-amd-ryzen-7-5800x3d-10th-anniversary-edition-34ghz-45ghz-octa-core-100mb-am4-100-100000651pof",
-      targetPrice: 2500,
+      targetPrice: 1999.99,
       currency: DEFAULT_CURRENCY,
       active: true,
       notes: "Pagina brasileira com titulo explicito da edicao 10th Anniversary.",
@@ -102,7 +102,7 @@ const DEFAULT_STATE = {
       id: "amazon-br-5800x3d-pof",
       store: "Amazon Brasil",
       url: "https://www.amazon.com.br/AMD-Processador-5800X3D-n%C3%BAcleos-tecnologia/dp/B0H41D4KFT",
-      targetPrice: 2500,
+      targetPrice: 1999.99,
       currency: DEFAULT_CURRENCY,
       active: true,
       notes: "Marketplace; validacao rigida evita confundir seguro, parcela ou produto relacionado com o processador.",
@@ -112,7 +112,7 @@ const DEFAULT_STATE = {
       id: "mercadolivre-5800x3d-pof",
       store: "Mercado Livre",
       url: "https://www.mercadolivre.com.br/procesador-amd-ryzen-7-5800x3d-34-ghz-8-nucleos-16-hilos-10/p/MLB2082057969",
-      targetPrice: 2500,
+      targetPrice: 1999.99,
       currency: DEFAULT_CURRENCY,
       active: true,
       notes: "Marketplace; pode pedir verificacao de conta e bloquear a leitura automatica.",
@@ -122,7 +122,7 @@ const DEFAULT_STATE = {
       id: "patoloco-5800x3d-busca",
       store: "Patoloco",
       url: "https://patoloco.com.br/busca?palavra=5800x3d",
-      targetPrice: 2500,
+      targetPrice: 1999.99,
       currency: DEFAULT_CURRENCY,
       active: true,
       notes: "Busca da loja; registra historico somente se a pagina confirmar o produto correto.",

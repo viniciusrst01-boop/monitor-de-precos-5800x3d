@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: monitor-de-precos-5800x3d
+    env: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /var/data
+    disk:
+      name: price-monitor-data
+      mountPath: /var/data
+      sizeGB: 1
