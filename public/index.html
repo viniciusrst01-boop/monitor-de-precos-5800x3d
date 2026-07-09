@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Monitor 5800X3D</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-lockup">
+          <canvas id="chipCanvas" width="112" height="112" aria-hidden="true"></canvas>
+          <div>
+            <p class="eyebrow">Monitor local</p>
+            <h1>Ryzen 7 5800X3D 10th Anniversary</h1>
+            <p id="statusLine" class="status-line">Carregando histórico e fontes...</p>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <button id="refreshButton" class="button secondary" type="button">Atualizar painel</button>
+          <button id="scanButton" class="button primary" type="button">Verificar agora</button>
+        </div>
+      </header>
+
+      <main>
+        <section class="metrics" aria-label="Resumo">
+          <article class="metric">
+            <span class="metric-label">Menor preço aceito</span>
+            <strong id="bestPrice">--</strong>
+            <span id="bestPriceMeta">Sem leituras ainda</span>
+          </article>
+          <article class="metric">
+            <span class="metric-label">Fontes ativas</span>
+            <strong id="activeSources">--</strong>
+            <span id="sourceHealth">Aguardando verificação</span>
+          </article>
+          <article class="metric">
+            <span class="metric-label">Última verificação</span>
+            <strong id="lastScan">--</strong>
+            <span id="scanCadence">Intervalo não definido</span>
+          </article>
+          <article class="metric alert-metric">
+            <span class="metric-label">Alertas abertos</span>
+            <strong id="openAlerts">--</strong>
+            <button id="markAlertsRead" class="inline-button" type="button">Marcar lidos</button>
+          </article>
+        </section>
+
+        <section class="main-grid">
+          <div class="panel history-panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Histórico</p>
+                <h2>Preço por fonte</h2>
+              </div>
+              <span class="currency-lock">BRL · R$</span>
+            </div>
+            <div class="chart-wrap">
+              <canvas id="priceChart" height="320" aria-label="Gráfico de histórico de preço"></canvas>
+              <div id="emptyChart" class="empty-chart">Nenhum preço aceito foi registrado ainda.</div>
+            </div>
+            <div id="chartLegend" class="chart-legend"></div>
+            <div id="chartReadouts" class="chart-readouts"></div>
+          </div>
+
+          <aside class="panel control-panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Fonte</p>
+                <h2>Adicionar loja brasileira</h2>
+              </div>
+            </div>
+            <form id="sourceForm" class="stacked-form">
+              <label>
+                Loja
+                <input name="store" type="text" placeholder="KaBuM!, Pichau, Terabyte..." />
+              </label>
+              <label>
+                URL do produto
+                <input name="url" type="url" required placeholder="https://..." />
+              </label>
+              <div class="form-row">
+                <label>
+                  Preço alvo
+                  <input name="targetPrice" type="number" step="0.01" min="0" placeholder="0,00" />
+                </label>
+                <div class="locked-field" aria-label="Moeda fixa">
+                  <span>Moeda</span>
+                  <strong>BRL · R$</strong>
+                </div>
+              </div>
+              <button class="button primary full" type="submit">Adicionar fonte</button>
+            </form>
+
+            <div class="divider"></div>
+
+            <form id="settingsForm" class="stacked-form compact">
+              <div class="panel-header tight">
+                <div>
+                  <p class="eyebrow">Configurações</p>
+                  <h2>Monitoramento</h2>
+                </div>
+              </div>
+              <label class="toggle-row">
+                <input name="autoScan" type="checkbox" />
+                Varredura automática
+              </label>
+              <label class="toggle-row">
+                <input name="requireAnniversarySignals" type="checkbox" />
+                Exigir edição de 10 anos
+              </label>
+              <label>
+                Intervalo em minutos
+                <input name="intervalMinutes" type="number" min="5" step="5" />
+              </label>
+              <label>
+                Webhook de alerta
+                <input name="webhookUrl" type="url" placeholder="https://..." />
+              </label>
+              <div class="form-row buttons-row">
+                <button class="button secondary" id="notifyButton" type="button">Ativar notificações</button>
+                <button class="button primary" type="submit">Salvar</button>
+              </div>
+            </form>
+          </aside>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Fontes</p>
+              <h2>Lojas monitoradas</h2>
+            </div>
+            <span id="strictModeBadge" class="status-pill neutral">Modo rígido</span>
+          </div>
+          <div id="sourcesList" class="sources-list"></div>
+        </section>
+
+        <section class="activity-grid">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Alertas</p>
+                <h2>Preço no alvo</h2>
+              </div>
+            </div>
+            <div id="alertsList" class="activity-list"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Eventos</p>
+                <h2>Validação e erros</h2>
+              </div>
+            </div>
+            <div id="eventsList" class="activity-list"></div>
+          </div>
+        </section>
+
+        <section class="panel international-panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Contexto internacional</p>
+              <h2>Tendência fora do Brasil</h2>
+            </div>
+            <span class="status-pill neutral">Bloco isolado</span>
+          </div>
+          <div id="internationalList" class="international-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <template id="sourceTemplate">
+      <article class="source-row">
+        <div class="source-main">
+          <div class="source-title-row">
+            <h3></h3>
+            <span class="status-pill"></span>
+          </div>
+          <a target="_blank" rel="noreferrer"></a>
+          <p class="source-subtitle"></p>
+        </div>
+        <form class="source-controls">
+          <label>
+            Alvo
+            <input name="targetPrice" type="number" step="0.01" min="0" />
+          </label>
+          <div class="locked-field compact-lock" aria-label="Moeda fixa">
+            <span>Moeda</span>
+            <strong>BRL</strong>
+          </div>
+          <label class="toggle-row">
+            <input name="active" type="checkbox" />
+            Ativa
+          </label>
+          <div class="row-actions">
+            <button class="button secondary scan-source" type="button">Verificar</button>
+            <button class="button secondary save-source" type="submit">Salvar</button>
+            <button class="icon-button delete-source" type="button" title="Remover fonte">X</button>
+          </div>
+        </form>
+      </article>
+    </template>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

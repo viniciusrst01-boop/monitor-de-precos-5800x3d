@@ -1,0 +1,14 @@
+{
+  "name": "monitor-de-precos-5800x3d",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Site/app local para monitorar preco do AMD Ryzen 7 5800X3D 10th Anniversary Edition.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
