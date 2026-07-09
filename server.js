@@ -24,6 +24,7 @@ const PRODUCT_PROFILE = {
   anniversarySignals: [
     "10th anniversary",
     "10th-anniversary",
+    "anniversary",
     "anniversary edition",
     "10 anos",
     "edicao de 10 anos",
@@ -673,8 +674,9 @@ function extractProductData(html, fallbackCurrency, pageUrl, allowedCurrencies =
   const h1 = extractTagText(html, "h1");
   const description = extractMeta(html, ["og:description", "description", "twitter:description"]);
   const structured = collectStructuredData(html, fallbackCurrency);
-  const productName = structured.names.find(Boolean) || h1 || title || pageUrl;
-  const mainText = [productName, title, h1, description].filter(Boolean).join(" | ");
+  const urlHint = productHintFromUrl(pageUrl);
+  const productName = structured.names.find(Boolean) || h1 || nonGenericTitle(title) || urlHint || pageUrl;
+  const mainText = [productName, title, h1, description, urlHint].filter(Boolean).join(" | ");
   const bodyText = stripTags(html).slice(0, 160000);
   const allText = `${mainText} ${bodyText}`;
   const primaryProductText = `${mainText} ${extractPrimaryProductText(bodyText)}`;
@@ -717,6 +719,23 @@ function extractProductData(html, fallbackCurrency, pageUrl, allowedCurrencies =
     stockStatus,
     match
   };
+}
+
+function nonGenericTitle(title) {
+  const value = String(title || "").trim();
+  return /^(mercado libre|mercado livre)$/i.test(value) ? "" : value;
+}
+
+function productHintFromUrl(pageUrl) {
+  try {
+    const parsed = new URL(pageUrl);
+    const pathText = decodeURIComponent(parsed.pathname)
+      .replace(/\/(?:p|up)\/[^/]+$/i, "")
+      .replace(/[-_/]+/g, " ");
+    return pathText.trim();
+  } catch {
+    return String(pageUrl || "").replace(/[-_/]+/g, " ");
+  }
 }
 
 function extractPrimaryProductText(bodyText) {
@@ -900,7 +919,7 @@ async function scanSource(source) {
       throw new Error(`HTTP ${fetched.status}`);
     }
 
-    const data = extractProductData(fetched.body, DEFAULT_CURRENCY, fetched.finalUrl);
+    const data = extractProductData(fetched.body, DEFAULT_CURRENCY, source.url);
     const requireStrict = state.settings.requireAnniversarySignals !== false;
     const accepted = requireStrict ? data.match.strictOk : data.match.ok;
     const snapshot = {
@@ -1019,7 +1038,7 @@ async function scanInternationalSource(source) {
       throw new Error(`HTTP ${fetched.status}`);
     }
 
-    const data = extractProductData(fetched.body, sourceCurrency, fetched.finalUrl, [sourceCurrency]);
+    const data = extractProductData(fetched.body, sourceCurrency, source.url, [sourceCurrency]);
     const accepted = state.settings.requireAnniversarySignals !== false ? data.match.strictOk : data.match.ok;
     const snapshot = {
       ...snapshotBase,
