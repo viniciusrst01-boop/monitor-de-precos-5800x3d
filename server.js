@@ -9,7 +9,7 @@ const ROOT_DIR = __dirname;
 const PUBLIC_DIR = path.join(ROOT_DIR, "public");
 const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(ROOT_DIR, "data");
 const STATE_FILE = path.join(DATA_DIR, "state.json");
-const BRAZIL_SEED_VERSION = "br-2";
+const BRAZIL_SEED_VERSION = "br-3";
 const INTERNATIONAL_SEED_VERSION = "intl-1";
 const DEFAULT_CURRENCY = "BRL";
 const INTERNATIONAL_CURRENCIES = ["USD", "INR", "EUR", "GBP"];
@@ -115,7 +115,7 @@ const DEFAULT_STATE = {
     {
       id: "mercadolivre-5800x3d-pof",
       store: "Mercado Livre",
-      url: "https://www.mercadolivre.com.br/procesador-amd-ryzen-7-5800x3d-34-ghz-8-nucleos-16-hilos-10/p/MLB2082057969",
+      url: "https://www.mercadolivre.com.br/amd-ryzen-7-5800x3d-anniversary-8c-16ths-34ghz-am4-preto/up/MLBU4234950727#polycard_client=search-desktop&be_origin=backend&search_layout=grid&position=1&type=product&tracking_id=31f978c9-0aa3-40db-965b-089b094e970c&wid=MLB4861423743&sid=search",
       targetPrice: 1999.99,
       currency: DEFAULT_CURRENCY,
       active: true,
@@ -434,9 +434,9 @@ function safeHostname(value) {
 function mergeSourcesByUrl(sources) {
   const seen = new Set();
   return sources.filter((source) => {
-    const key = String(source.url || "").toLowerCase();
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
+    const keys = [source.id, source.url].map((value) => String(value || "").toLowerCase()).filter(Boolean);
+    if (!keys.length || keys.some((key) => seen.has(key))) return false;
+    keys.forEach((key) => seen.add(key));
     return true;
   });
 }
