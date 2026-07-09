@@ -562,27 +562,24 @@ function drawCleanAxisLabels(ctx, width, height, padding, entries, yMin, yMax) {
 function drawLowestPriceCallout(ctx, lowest, xFor, yFor, width, height, padding) {
   if (!lowest) return;
 
-  const x = xFor(lowest);
+  const originalX = xFor(lowest);
+  const x = width - padding.right;
   const y = yFor(lowest);
   const label = formatCurrency(lowest.price, lowest.currency).replace("R$", "R$ ");
   const store = sourceName(lowest.sourceId);
   const boxWidth = 132;
   const boxHeight = 58;
-  let boxX = x + 14;
-  let boxY = y + 16;
+  const boxX = x - boxWidth - 14;
+  let boxY = y - boxHeight / 2;
 
-  if (boxX + boxWidth > width - padding.right) {
-    boxX = x - boxWidth - 14;
-  }
-  if (boxY + boxHeight > height - padding.bottom) {
-    boxY = y - boxHeight - 18;
-  }
+  boxY = Math.max(padding.top + 4, Math.min(boxY, height - padding.bottom - boxHeight - 4));
 
   ctx.save();
   ctx.setLineDash([4, 4]);
   ctx.strokeStyle = "rgba(0, 128, 128, 0.35)";
   ctx.beginPath();
-  ctx.moveTo(x, y);
+  ctx.moveTo(originalX, y);
+  ctx.lineTo(x, y);
   ctx.lineTo(x, height - padding.bottom);
   ctx.stroke();
   ctx.setLineDash([]);
