@@ -140,9 +140,13 @@ function renderMetrics() {
 
   elements.activeSources.textContent = `${active.length}/${sources.length}`;
   const errors = active.filter((source) => source.lastStatus === "error").length;
-  const mismatches = active.filter((source) =>
-    ["wrong_product", "base_model_unconfirmed", "not_matched", "no_price"].includes(source.lastStatus)
-  ).length;
+  const mismatches = active.filter((source) => {
+    const latest = latestForSource(source.id);
+    return (
+      !isWaitingForLocalCollector(source, latest) &&
+      ["wrong_product", "base_model_unconfirmed", "not_matched", "no_price"].includes(source.lastStatus)
+    );
+  }).length;
   elements.sourceHealth.textContent = errors
     ? `${errors} com erro`
     : mismatches
@@ -194,15 +198,18 @@ function renderSources() {
     const form = row.querySelector(".source-controls");
 
     title.textContent = source.store;
-    badge.textContent = statusLabel(source.lastStatus);
-    badge.className = `status-pill ${statusTone(source.lastStatus)}`;
+    const waitingForLocalCollector = isWaitingForLocalCollector(source, latest);
+    badge.textContent = waitingForLocalCollector ? "coletor local" : statusLabel(source.lastStatus);
+    badge.className = `status-pill ${waitingForLocalCollector ? "warning" : statusTone(source.lastStatus)}`;
     link.href = source.url;
     link.textContent = source.url;
     form.targetPrice.value = source.targetPrice || "";
     form.active.checked = source.active !== false;
     form.dataset.sourceId = source.id;
 
-    const currentPrice = latest
+    const currentPrice = waitingForLocalCollector
+      ? "aguardando coletor local"
+      : latest
       ? `${formatCurrency(latest.price, latest.currency)} · ${stockLabel(latest.stockStatus)}`
       : "sem preço aceito";
     const checked = source.lastCheckedAt ? `verificado ${relativeDate(source.lastCheckedAt)}` : "não verificado";
@@ -214,6 +221,15 @@ function renderSources() {
     form.addEventListener("submit", (event) => saveSource(event, source));
     elements.sourcesList.append(row);
   }
+}
+
+function isWaitingForLocalCollector(source, latest) {
+  return (
+    !latest &&
+    source.lastStatus === "no_price" &&
+    /mercado\s*livre/i.test(source.store || "") &&
+    Number(source.lastMatchConfidence || 0) >= 90
+  );
 }
 
 function latestForSource(sourceId) {
