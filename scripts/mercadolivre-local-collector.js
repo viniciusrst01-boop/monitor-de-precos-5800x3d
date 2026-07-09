@@ -6,6 +6,10 @@ const DEFAULT_URL =
 
 const sourceId = process.env.MERCADO_LIVRE_SOURCE_ID || "mercadolivre-5800x3d-pof";
 const productUrl = process.env.MERCADO_LIVRE_URL || DEFAULT_URL;
+const fallbackProductUrls = [
+  productUrl,
+  "https://produto.mercadolivre.com.br/MLB-4861423743-amd-ryzen-7-5800x3d-anniversary-8c-16ths-34ghz-am4-preto-_JM"
+];
 const ingestUrl = process.env.MONITOR_INGEST_URL || "https://monitor-de-precos-5800x3d.onrender.com/api/manual-price";
 const ingestToken = process.env.MONITOR_INGEST_TOKEN || "";
 const profileDir = process.env.MERCADO_LIVRE_PROFILE_DIR || path.join(__dirname, "..", ".collector-profile", "mercadolivre");
@@ -30,14 +34,7 @@ async function main() {
 
   try {
     const page = context.pages()[0] || await context.newPage();
-    await page.goto(productUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
-    await page.waitForTimeout(2500);
-
-    if (await looksBlocked(page)) {
-      await waitForManualVerification(page);
-    }
-
-    const reading = await readProduct(page);
+    const reading = await readFirstAvailableProduct(page);
     const response = await fetch(ingestUrl, {
       method: "POST",
       headers: {
@@ -66,6 +63,38 @@ async function main() {
   }
 }
 
+async function readFirstAvailableProduct(page) {
+  let lastError = null;
+
+  for (const url of fallbackProductUrls) {
+    try {
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+      await page.waitForTimeout(2500);
+
+      if (await looksBlocked(page)) {
+        await waitForManualVerification(page);
+      }
+
+      return await readProduct(page);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  console.log(
+    "Nao encontrei preco automaticamente. No navegador aberto, faca login/recarregue/abra o anuncio ate o preco aparecer e pressione Enter aqui."
+  );
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  await rl.question("");
+  rl.close();
+  await page.waitForTimeout(1000);
+  try {
+    return await readProduct(page);
+  } catch {
+    throw lastError || new Error("Nao encontrei uma pagina do Mercado Livre com preco visivel.");
+  }
+}
+
 async function loadPlaywright() {
   try {
     return await import("playwright");
@@ -77,7 +106,12 @@ async function loadPlaywright() {
 async function looksBlocked(page) {
   const url = page.url();
   const text = await page.locator("body").innerText({ timeout: 10000 }).catch(() => "");
-  return /account-verification|suspicious|verifica/i.test(url) || /verifica|validar|captcha|sou humano/i.test(text);
+  return (
+    /account-verification|suspicious-traffic/i.test(url) ||
+    /captcha|sou humano|nao sou um robo|não sou um robô|confirmar que voce nao e um robo|confirmar que você não é um robô/i.test(
+      text
+    )
+  );
 }
 
 async function waitForManualVerification(page) {
