@@ -364,7 +364,7 @@ function renderChart() {
 
   const width = canvas.width / dpr;
   const height = canvas.height / dpr;
-  const padding = { top: 30, right: 38, bottom: 48, left: 64 };
+  const padding = { top: 30, right: 38, bottom: 48, left: 82 };
   const entries = priceSeriesForCurrentRange();
 
   ctx.clearRect(0, 0, width, height);
@@ -382,6 +382,7 @@ function renderChart() {
   const prices = entries.map((entry) => Number(entry.price));
   const minPrice = Math.min(...prices);
   const maxPrice = Math.max(...prices);
+  const minEntry = entries.reduce((winner, entry) => (Number(entry.price) < Number(winner.price) ? entry : winner), entries[0]);
   const yMin = Math.max(0, Math.floor((minPrice * 0.84) / 50) * 50);
   const yMax = Math.ceil((maxPrice * 1.16) / 50) * 50;
   renderChartDetails(entries);
@@ -401,6 +402,7 @@ function renderChart() {
   drawHistoryArea(ctx, entries, xFor, yFor, height, padding);
   drawHistoryLine(ctx, entries, xFor, yFor);
   drawCleanAxisLabels(ctx, width, height, padding, entries, yMin, yMax);
+  drawLowestPriceCallout(ctx, minEntry, entries[entries.length - 1], xFor, yFor, width, height, padding);
   drawCurrentPriceCallout(ctx, entries[entries.length - 1], xFor, yFor, width, padding);
 }
 
@@ -603,6 +605,61 @@ function drawCurrentPriceCallout(ctx, latest, xFor, yFor, width, padding) {
   ctx.arc(x, y, 3, 0, Math.PI * 2);
   ctx.fillStyle = "#fff";
   ctx.fill();
+  ctx.restore();
+}
+
+function drawLowestPriceCallout(ctx, lowest, latest, xFor, yFor, width, height, padding) {
+  if (!lowest || lowest.id === latest.id) return;
+
+  const x = xFor(lowest);
+  const y = yFor(lowest);
+  const label = formatCurrency(lowest.price, lowest.currency).replace("R$", "R$ ");
+  const store = sourceName(lowest.sourceId);
+  const boxWidth = 132;
+  const boxHeight = 58;
+  let boxX = x + 14;
+  let boxY = y + 16;
+
+  if (boxX + boxWidth > width - padding.right) {
+    boxX = x - boxWidth - 14;
+  }
+  if (boxY + boxHeight > height - padding.bottom) {
+    boxY = y - boxHeight - 18;
+  }
+
+  ctx.save();
+  ctx.setLineDash([4, 4]);
+  ctx.strokeStyle = "rgba(0, 128, 128, 0.35)";
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x, height - padding.bottom);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = "#ffffff";
+  ctx.strokeStyle = "#b8e3df";
+  ctx.lineWidth = 1;
+  roundRect(ctx, boxX, boxY, boxWidth, boxHeight, 7);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = "#008f8f";
+  ctx.font = "800 16px Inter, system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, boxX + boxWidth / 2, boxY + 20);
+  ctx.fillStyle = "#505a57";
+  ctx.font = "11px Inter, system-ui, sans-serif";
+  ctx.fillText("MENOR", boxX + boxWidth / 2, boxY + 37);
+  ctx.fillText(store.slice(0, 18), boxX + boxWidth / 2, boxY + 50);
+
+  ctx.beginPath();
+  ctx.arc(x, y, 8, 0, Math.PI * 2);
+  ctx.fillStyle = "#00a8a8";
+  ctx.fill();
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 3;
+  ctx.stroke();
   ctx.restore();
 }
 
