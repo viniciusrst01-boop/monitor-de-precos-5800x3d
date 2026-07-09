@@ -428,25 +428,49 @@ function priceSeriesForCurrentRange() {
   const now = Date.now();
   const cutoff = now - app.chartDays * 24 * 60 * 60 * 1000;
   const filtered = sorted.filter((entry) => new Date(entry.checkedAt).getTime() >= cutoff);
-  const rangeEntries = lowestPricePerScan(filtered.length ? filtered : sorted);
+  const rangeEntries = lowestKnownPricePerScan(sorted, filtered.length ? cutoff : Number.NEGATIVE_INFINITY);
   return rangeEntries.map((entry, index) => ({ ...entry, chartIndex: index }));
 }
 
-function lowestPricePerScan(entries) {
+function lowestKnownPricePerScan(entries, cutoff) {
   const scanWindowMs = 5 * 60 * 1000;
   const buckets = new Map();
+  const latestBySource = new Map();
 
   for (const entry of entries) {
     const checkedAt = new Date(entry.checkedAt).getTime();
-    const bucket = Math.floor(checkedAt / scanWindowMs);
-    const current = buckets.get(bucket);
-
-    if (!current || Number(entry.price) < Number(current.price)) {
-      buckets.set(bucket, entry);
+    if (checkedAt < cutoff) {
+      latestBySource.set(entry.sourceId, entry);
+      continue;
     }
+
+    const bucket = Math.floor(checkedAt / scanWindowMs);
+    const bucketEntries = buckets.get(bucket) || [];
+    bucketEntries.push(entry);
+    buckets.set(bucket, bucketEntries);
   }
 
-  return [...buckets.values()].sort((a, b) => new Date(a.checkedAt) - new Date(b.checkedAt));
+  const timeline = [];
+  const orderedBuckets = [...buckets.entries()].sort(([a], [b]) => a - b);
+
+  for (const [, bucketEntries] of orderedBuckets) {
+    for (const entry of bucketEntries) {
+      latestBySource.set(entry.sourceId, entry);
+    }
+
+    const lowest = [...latestBySource.values()].reduce(
+      (winner, entry) => (!winner || Number(entry.price) < Number(winner.price) ? entry : winner),
+      null
+    );
+    const bucketTime = bucketEntries.reduce(
+      (latest, entry) => Math.max(latest, new Date(entry.checkedAt).getTime()),
+      0
+    );
+
+    if (lowest) timeline.push({ ...lowest, checkedAt: new Date(bucketTime).toISOString() });
+  }
+
+  return timeline;
 }
 
 function renderChartDetails(entries) {
