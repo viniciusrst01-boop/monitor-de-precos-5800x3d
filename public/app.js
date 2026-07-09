@@ -412,8 +412,25 @@ function priceSeriesForCurrentRange() {
   const now = Date.now();
   const cutoff = now - app.chartDays * 24 * 60 * 60 * 1000;
   const filtered = sorted.filter((entry) => new Date(entry.checkedAt).getTime() >= cutoff);
-  const rangeEntries = filtered.length ? filtered : sorted;
+  const rangeEntries = lowestPricePerScan(filtered.length ? filtered : sorted);
   return rangeEntries.map((entry, index) => ({ ...entry, chartIndex: index }));
+}
+
+function lowestPricePerScan(entries) {
+  const scanWindowMs = 5 * 60 * 1000;
+  const buckets = new Map();
+
+  for (const entry of entries) {
+    const checkedAt = new Date(entry.checkedAt).getTime();
+    const bucket = Math.floor(checkedAt / scanWindowMs);
+    const current = buckets.get(bucket);
+
+    if (!current || Number(entry.price) < Number(current.price)) {
+      buckets.set(bucket, entry);
+    }
+  }
+
+  return [...buckets.values()].sort((a, b) => new Date(a.checkedAt) - new Date(b.checkedAt));
 }
 
 function renderChartDetails(entries) {
