@@ -13,6 +13,9 @@ const BRAZIL_SEED_VERSION = "br-2";
 const INTERNATIONAL_SEED_VERSION = "intl-1";
 const DEFAULT_CURRENCY = "BRL";
 const INTERNATIONAL_CURRENCIES = ["USD", "INR", "EUR", "GBP"];
+const SUPABASE_URL = String(process.env.SUPABASE_URL || "").replace(/\/$/, "");
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "";
+const SUPABASE_ENABLED = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
 
 const PRODUCT_PROFILE = {
   name: "AMD Ryzen 7 5800X3D 10th Anniversary Edition",
@@ -268,6 +271,104 @@ function saveState(nextState = state) {
   const tmpFile = `${STATE_FILE}.tmp`;
   fs.writeFileSync(tmpFile, `${JSON.stringify(nextState, null, 2)}\n`, "utf8");
   fs.renameSync(tmpFile, STATE_FILE);
+}
+
+async function supabaseRequest(pathname, { method = "GET", body, query = "" } = {}) {
+  if (!SUPABASE_ENABLED) return null;
+
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/${pathname}${query}`, {
+    method,
+    headers: {
+      "apikey": SUPABASE_SERVICE_ROLE_KEY,
+      "authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      "content-type": "application/json",
+      "prefer": method === "POST" ? "resolution=ignore-duplicates" : ""
+    },
+    body: body ? JSON.stringify(body) : undefined
+  });
+
+  if (!response.ok) {
+    const message = await response.text().catch(() => "");
+    throw new Error(`Supabase ${response.status}: ${message || response.statusText}`);
+  }
+
+  if (response.status === 204) return null;
+  return response.json().catch(() => null);
+}
+
+function snapshotToDbRow(snapshot, kind = "br") {
+  return {
+    id: snapshot.id,
+    source_id: snapshot.sourceId,
+    store: snapshot.store,
+    url: snapshot.url,
+    checked_at: snapshot.checkedAt,
+    price: snapshot.price,
+    currency: snapshot.currency,
+    stock_status: snapshot.stockStatus,
+    title: snapshot.title,
+    match_status: snapshot.matchStatus,
+    match_confidence: snapshot.matchConfidence,
+    accepted: Boolean(snapshot.accepted),
+    error: snapshot.error || "",
+    kind
+  };
+}
+
+function dbRowToSnapshot(row) {
+  return {
+    id: row.id,
+    sourceId: row.source_id,
+    store: row.store,
+    url: row.url,
+    checkedAt: row.checked_at,
+    price: Number(row.price),
+    currency: row.currency,
+    stockStatus: row.stock_status,
+    title: row.title || "",
+    matchStatus: row.match_status || "",
+    matchConfidence: Number(row.match_confidence || 0),
+    accepted: Boolean(row.accepted),
+    error: row.error || ""
+  };
+}
+
+async function saveSnapshotToSupabase(snapshot, kind = "br") {
+  if (!SUPABASE_ENABLED || !snapshot.accepted || !snapshot.price) return;
+
+  try {
+    await supabaseRequest("price_history", {
+      method: "POST",
+      body: snapshotToDbRow(snapshot, kind)
+    });
+  } catch (error) {
+    addEvent("supabase_write_failed", "warning", `Supabase: falha ao salvar historico (${error.message}).`);
+  }
+}
+
+async function loadHistoryFromSupabase() {
+  if (!SUPABASE_ENABLED) return;
+
+  try {
+    const rows = await supabaseRequest("price_history", {
+      query:
+        "?select=*&accepted=eq.true&order=checked_at.asc&limit=3000"
+    });
+    if (!Array.isArray(rows)) return;
+
+    state.history = rows
+      .filter((row) => row.kind === "br")
+      .map(dbRowToSnapshot)
+      .filter((entry) => isReasonablePriceForCurrency(entry.price, entry.currency))
+      .slice(-2500);
+    state.internationalHistory = rows
+      .filter((row) => row.kind === "international")
+      .map(dbRowToSnapshot)
+      .filter((entry) => isReasonablePriceForCurrency(entry.price, entry.currency))
+      .slice(-1200);
+  } catch (error) {
+    addEvent("supabase_read_failed", "warning", `Supabase: falha ao carregar historico (${error.message}).`);
+  }
 }
 
 function createId(prefix) {
@@ -851,6 +952,7 @@ async function scanSource(source) {
 
     state.history.push(snapshot);
     state.history = state.history.slice(-2500);
+    await saveSnapshotToSupabase(snapshot, "br");
 
     const target = Number(source.targetPrice || 0);
     if (target > 0 && data.price <= target && data.stockStatus !== "out_of_stock") {
@@ -949,6 +1051,7 @@ async function scanInternationalSource(source) {
     if (accepted && data.price) {
       state.internationalHistory.push(snapshot);
       state.internationalHistory = state.internationalHistory.slice(-1200);
+      await saveSnapshotToSupabase(snapshot, "international");
     }
 
     return snapshot;
@@ -1130,10 +1233,15 @@ async function handleApi(req, res) {
   const pathname = url.pathname;
 
   if (req.method === "GET" && pathname === "/api/state") {
+    await loadHistoryFromSupabase();
     sendJson(res, 200, {
       ...state,
       productProfile: PRODUCT_PROFILE,
-      scanInProgress
+      scanInProgress,
+      persistence: {
+        supabase: SUPABASE_ENABLED,
+        dataDir: DATA_DIR
+      }
     });
     return;
   }

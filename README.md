@@ -54,3 +54,18 @@ O app esta pronto para hospedar em um servico Node.js persistente, como Render o
 3. O arquivo `render.yaml` cria o servico web no plano gratuito.
 
 O historico fica no caminho configurado por `DATA_DIR`. Localmente, ele usa `./data`; no Render gratuito, usa `/tmp/price-monitor-data`, que pode ser apagado quando o servico reinicia. Para historico permanente em producao, troque para um plano com disco persistente e use `DATA_DIR=/var/data`.
+
+## Historico permanente com Supabase
+
+1. Crie um projeto no Supabase.
+2. Abra o SQL Editor e execute `supabase/schema.sql`.
+3. No Render, configure as variaveis:
+   - `SUPABASE_URL`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+4. No GitHub, crie o secret `MONITOR_SCAN_URL` com:
+
+```text
+https://monitor-de-precos-5800x3d.onrender.com/api/scan
+```
+
+O workflow `.github/workflows/price-scan.yml` chama a verificacao de precos uma vez por hora.
