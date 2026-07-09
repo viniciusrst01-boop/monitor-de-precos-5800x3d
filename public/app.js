@@ -226,9 +226,8 @@ function renderSources() {
 function isWaitingForLocalCollector(source, latest) {
   return (
     !latest &&
-    source.lastStatus === "no_price" &&
-    /mercado\s*livre/i.test(source.store || "") &&
-    Number(source.lastMatchConfidence || 0) >= 90
+    source.localCollector === true &&
+    ["error", "no_price"].includes(source.lastStatus)
   );
 }
 

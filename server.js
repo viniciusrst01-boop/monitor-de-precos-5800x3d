@@ -9,7 +9,7 @@ const ROOT_DIR = __dirname;
 const PUBLIC_DIR = path.join(ROOT_DIR, "public");
 const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(ROOT_DIR, "data");
 const STATE_FILE = path.join(DATA_DIR, "state.json");
-const BRAZIL_SEED_VERSION = "br-3";
+const BRAZIL_SEED_VERSION = "br-4";
 const INTERNATIONAL_SEED_VERSION = "intl-1";
 const DEFAULT_CURRENCY = "BRL";
 const INTERNATIONAL_CURRENCIES = ["USD", "INR", "EUR", "GBP"];
@@ -17,6 +17,8 @@ const SUPABASE_URL = String(process.env.SUPABASE_URL || "").replace(/\/$/, "");
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "";
 const SUPABASE_ENABLED = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
 const MANUAL_INGEST_TOKEN = process.env.MANUAL_INGEST_TOKEN || "";
+const PICHAU_PRODUCT_URL =
+  "https://www.pichau.com.br/processador-amd-ryzen-7-5800x3d-8-core-16-threads-3-4ghz-4-5ghz-turbo-cache-100mb-am4-100-100000651pof";
 
 const PRODUCT_PROFILE = {
   name: "AMD Ryzen 7 5800X3D 10th Anniversary Edition",
@@ -76,11 +78,12 @@ const DEFAULT_STATE = {
     {
       id: "pichau-5800x3d-busca",
       store: "Pichau",
-      url: "https://www.pichau.com.br/search?q=Ryzen%207%205800X3D%20100-100000651POF",
+      url: PICHAU_PRODUCT_URL,
       targetPrice: 1999.99,
       currency: DEFAULT_CURRENCY,
       active: true,
-      notes: "Busca da loja; pode aparecer como bloqueada se a protecao anti-bot impedir leitura.",
+      localCollector: true,
+      notes: "Pagina direta com o codigo 100-100000651POF; usa coletor local se a protecao anti-bot bloquear a leitura.",
       createdAt: new Date().toISOString()
     },
     {
@@ -120,6 +123,7 @@ const DEFAULT_STATE = {
       targetPrice: 1999.99,
       currency: DEFAULT_CURRENCY,
       active: true,
+      localCollector: true,
       notes: "Marketplace; pode pedir verificacao de conta e bloquear a leitura automatica.",
       createdAt: new Date().toISOString()
     },
@@ -206,7 +210,23 @@ function migrateState(loaded) {
   const rawSources = (Array.isArray(loaded.sources) ? loaded.sources : []).filter(
     (source) => source.id !== "powertec-5800x3d-10th"
   );
-  const keptSources = rawSources.filter((source) => isBrazilianStoreUrl(source.url)).map(normalizeBrazilianSource);
+  const keptSources = rawSources
+    .filter((source) => isBrazilianStoreUrl(source.url))
+    .map(normalizeBrazilianSource)
+    .map((source) => {
+      if (source.id === "pichau-5800x3d-busca") {
+        return {
+          ...source,
+          url: PICHAU_PRODUCT_URL,
+          localCollector: true,
+          notes: "Pagina direta com o codigo 100-100000651POF; usa coletor local se a protecao anti-bot bloquear a leitura."
+        };
+      }
+      if (source.id === "mercadolivre-5800x3d-pof") {
+        return { ...source, localCollector: true };
+      }
+      return source;
+    });
   const movedInternationalSources = rawSources
     .filter((source) => !isBrazilianStoreUrl(source.url))
     .map(normalizeInternationalSource);

@@ -6,8 +6,10 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node --check scripts/mercadolivre-local-collector.js",
-    "collect:mercadolivre": "node scripts/mercadolivre-local-collector.js"
+    "check": "node --check server.js && node --check scripts/mercadolivre-local-collector.js && node --check scripts/pichau-local-collector.js",
+    "collect:mercadolivre": "node scripts/mercadolivre-local-collector.js",
+    "collect:pichau": "node scripts/pichau-local-collector.js",
+    "collect:all": "npm run collect:pichau && npm run collect:mercadolivre"
   },
   "engines": {
     "node": ">=20"

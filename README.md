@@ -33,7 +33,7 @@ O app so registra historico principal quando a pagina parece ser do Ryzen 7 5800
 - Mercado Livre
 - Patoloco
 
-Amazon Brasil e Mercado Livre sao tratados como marketplace: o monitor exige match rigido e pode mostrar erro quando a loja pede verificacao, login ou bloqueia leitura automatica.
+Amazon Brasil e Mercado Livre sao tratados como marketplace: o monitor exige match rigido e pode mostrar erro quando a loja pede verificacao, login ou bloqueia leitura automatica. Pichau e Mercado Livre possuem coletor local como fallback contra bloqueios.
 
 ## Coletor local para Mercado Livre
 
@@ -59,6 +59,14 @@ npm run collect:mercadolivre
 ```
 
 Se o Mercado Livre pedir verificacao, resolva no navegador aberto e pressione Enter no terminal. O perfil fica salvo em `.collector-profile/mercadolivre` para as proximas coletas.
+
+Para a Pichau, use o mesmo token e rode:
+
+```powershell
+npm run collect:pichau
+```
+
+O coletor confirma o codigo `100-100000651POF` e envia o valor a vista no PIX, sem confundir com o total parcelado.
 
 ## Contexto internacional
 
