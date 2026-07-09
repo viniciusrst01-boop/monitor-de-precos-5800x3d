@@ -402,8 +402,7 @@ function renderChart() {
   drawHistoryArea(ctx, entries, xFor, yFor, height, padding);
   drawHistoryLine(ctx, entries, xFor, yFor);
   drawCleanAxisLabels(ctx, width, height, padding, entries, yMin, yMax);
-  drawLowestPriceCallout(ctx, minEntry, entries[entries.length - 1], xFor, yFor, width, height, padding);
-  drawCurrentPriceCallout(ctx, entries[entries.length - 1], xFor, yFor, width, padding);
+  drawLowestPriceCallout(ctx, minEntry, xFor, yFor, width, height, padding);
 }
 
 function priceSeriesForCurrentRange() {
@@ -560,56 +559,8 @@ function drawCleanAxisLabels(ctx, width, height, padding, entries, yMin, yMax) {
   }
 }
 
-function drawCurrentPriceCallout(ctx, latest, xFor, yFor, width, padding) {
-  const x = xFor(latest);
-  const y = yFor(latest);
-  const label = formatCurrency(latest.price, latest.currency).replace("R$", "R$ ");
-  const sublabel = "AGORA";
-  const boxWidth = 112;
-  const boxHeight = 64;
-  const boxX = Math.min(Math.max(padding.left, x - boxWidth - 12), width - padding.right - boxWidth);
-  const boxY = Math.max(padding.top, y - boxHeight - 18);
-
-  ctx.save();
-  ctx.setLineDash([5, 4]);
-  ctx.strokeStyle = "#d8dcda";
-  ctx.beginPath();
-  ctx.moveTo(x, padding.top);
-  ctx.lineTo(x, y);
-  ctx.stroke();
-  ctx.setLineDash([]);
-
-  ctx.fillStyle = "#ffffff";
-  ctx.strokeStyle = "#ebecef";
-  ctx.lineWidth = 1;
-  roundRect(ctx, boxX, boxY, boxWidth, boxHeight, 7);
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = "#5b2aa0";
-  ctx.font = "800 19px Inter, system-ui, sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(label, boxX + boxWidth / 2, boxY + 24);
-  ctx.fillStyle = "#505a57";
-  ctx.font = "12px Inter, system-ui, sans-serif";
-  ctx.fillText(sublabel, boxX + boxWidth / 2, boxY + 44);
-
-  ctx.beginPath();
-  ctx.arc(x, y, 9, 0, Math.PI * 2);
-  ctx.fillStyle = "#5b2aa0";
-  ctx.fill();
-  ctx.strokeStyle = "#fff";
-  ctx.lineWidth = 3;
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(x, y, 3, 0, Math.PI * 2);
-  ctx.fillStyle = "#fff";
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawLowestPriceCallout(ctx, lowest, latest, xFor, yFor, width, height, padding) {
-  if (!lowest || lowest.id === latest.id) return;
+function drawLowestPriceCallout(ctx, lowest, xFor, yFor, width, height, padding) {
+  if (!lowest) return;
 
   const x = xFor(lowest);
   const y = yFor(lowest);
