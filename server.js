@@ -16,6 +16,7 @@ const INTERNATIONAL_CURRENCIES = ["USD", "INR", "EUR", "GBP"];
 const SUPABASE_URL = String(process.env.SUPABASE_URL || "").replace(/\/$/, "");
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "";
 const SUPABASE_ENABLED = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
+const MANUAL_INGEST_TOKEN = process.env.MANUAL_INGEST_TOKEN || "";
 
 const PRODUCT_PROFILE = {
   name: "AMD Ryzen 7 5800X3D 10th Anniversary Edition",
@@ -1260,6 +1261,90 @@ async function scanAllSources({ onlySourceId = "" } = {}) {
   }
 }
 
+async function ingestManualPrice(body) {
+  const sourceId = String(body.sourceId || "").trim();
+  const source =
+    state.sources.find((item) => item.id === sourceId) ||
+    state.sources.find((item) => isMercadoLivreUrl(item.url));
+  if (!source) throw createHttpError(404, "Fonte nao encontrada para ingestao manual.");
+
+  const price = Number(body.price);
+  const currency = String(body.currency || DEFAULT_CURRENCY).toUpperCase();
+  if (currency !== DEFAULT_CURRENCY) throw createHttpError(400, "Use moeda BRL para lojas brasileiras.");
+  if (!isReasonablePriceForCurrency(price, currency)) {
+    throw createHttpError(400, "Preco fora da faixa esperada para o produto.");
+  }
+
+  const title = String(body.title || source.lastTitle || productHintFromUrl(source.url) || source.store).trim();
+  const checkedAt = body.checkedAt ? new Date(body.checkedAt).toISOString() : nowIso();
+  const match = evaluateProductMatch(title, title);
+  const snapshot = {
+    id: createId("hist"),
+    sourceId: source.id,
+    store: source.store,
+    url: String(body.url || source.url),
+    checkedAt,
+    price,
+    currency,
+    stockStatus: String(body.stockStatus || "unknown"),
+    title,
+    matchStatus: match.strictOk ? "confirmed_anniversary" : match.status,
+    matchConfidence: Math.max(match.confidence, match.strictOk ? 100 : 0),
+    accepted: true,
+    error: "",
+    matchReasons: match.reasons,
+    priceSource: String(body.priceSource || "local-browser")
+  };
+
+  source.lastCheckedAt = checkedAt;
+  source.lastStatus = "ok";
+  source.lastTitle = title;
+  source.lastPrice = price;
+  source.lastCurrency = currency;
+  source.lastStockStatus = snapshot.stockStatus;
+  source.lastError = "";
+  source.lastMatchConfidence = snapshot.matchConfidence;
+
+  state.history.push(snapshot);
+  state.history = state.history.slice(-2500);
+  await saveSnapshotToSupabase(snapshot, "br");
+
+  const target = Number(source.targetPrice || 0);
+  if (target > 0 && price <= target && snapshot.stockStatus !== "out_of_stock") {
+    const alert = addAlert(
+      source,
+      snapshot,
+      `Preco ${formatCurrency(price, DEFAULT_CURRENCY)} ficou no alvo ${formatCurrency(target, DEFAULT_CURRENCY)}.`
+    );
+    if (alert) {
+      addEvent("price_alert", "success", `${source.store}: preco local dentro do alvo.`, {
+        sourceId: source.id,
+        alertId: alert.id
+      });
+    }
+  }
+
+  addEvent("manual_price", "success", `${source.store}: preco enviado pelo coletor local.`, {
+    sourceId: source.id,
+    price,
+    currency
+  });
+  saveState();
+  return snapshot;
+}
+
+function requireManualIngestToken(req) {
+  if (!MANUAL_INGEST_TOKEN) {
+    throw createHttpError(503, "Ingestao manual nao configurada no servidor.");
+  }
+  const auth = String(req.headers.authorization || "");
+  const bearer = auth.match(/^Bearer\s+(.+)$/i)?.[1] || "";
+  const token = bearer || String(req.headers["x-ingest-token"] || "");
+  if (token !== MANUAL_INGEST_TOKEN) {
+    throw createHttpError(401, "Token de ingestao invalido.");
+  }
+}
+
 async function sendWebhook(alert) {
   const webhookUrl = state.settings.webhookUrl;
   if (!webhookUrl) return;
@@ -1445,6 +1530,14 @@ async function handleApi(req, res) {
     addEvent("source_removed", "neutral", "Fonte removida.");
     saveState();
     sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/manual-price") {
+    requireManualIngestToken(req);
+    const body = await readJsonBody(req);
+    const snapshot = await ingestManualPrice(body);
+    sendJson(res, 201, snapshot);
     return;
   }
 

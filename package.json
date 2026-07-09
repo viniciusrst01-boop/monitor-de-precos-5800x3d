@@ -6,7 +6,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js"
+    "check": "node --check server.js && node --check scripts/mercadolivre-local-collector.js",
+    "collect:mercadolivre": "node scripts/mercadolivre-local-collector.js"
   },
   "engines": {
     "node": ">=20"

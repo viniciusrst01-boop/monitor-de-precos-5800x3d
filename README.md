@@ -35,6 +35,31 @@ O app so registra historico principal quando a pagina parece ser do Ryzen 7 5800
 
 Amazon Brasil e Mercado Livre sao tratados como marketplace: o monitor exige match rigido e pode mostrar erro quando a loja pede verificacao, login ou bloqueia leitura automatica.
 
+## Coletor local para Mercado Livre
+
+O Mercado Livre pode bloquear leituras feitas pelo servidor online. Para contornar isso, existe um coletor local que abre um navegador real no seu PC, le o preco e envia a leitura para o monitor.
+
+No Render, configure:
+
+```text
+MANUAL_INGEST_TOKEN=um-token-longo-e-secreto
+```
+
+No PC, instale o Playwright uma vez:
+
+```powershell
+npm install --no-save playwright
+```
+
+Depois rode:
+
+```powershell
+$env:MONITOR_INGEST_TOKEN="o-mesmo-token-do-render"
+npm run collect:mercadolivre
+```
+
+Se o Mercado Livre pedir verificacao, resolva no navegador aberto e pressione Enter no terminal. O perfil fica salvo em `.collector-profile/mercadolivre` para as proximas coletas.
+
 ## Contexto internacional
 
 No fim da pagina existe um bloco isolado para fontes de fora do Brasil. Ele serve apenas para indicar se o preco internacional subiu, caiu ou ficou estavel. Esses dados nao entram no grafico principal em real e nao disparam alerta de compra.
