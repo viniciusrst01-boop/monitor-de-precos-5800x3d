@@ -398,7 +398,6 @@ function renderChart() {
   const prices = entries.map((entry) => Number(entry.price));
   const minPrice = Math.min(...prices);
   const maxPrice = Math.max(...prices);
-  const minEntry = entries.reduce((winner, entry) => (Number(entry.price) < Number(winner.price) ? entry : winner), entries[0]);
   const yMin = Math.max(0, Math.floor((minPrice * 0.84) / 50) * 50);
   const yMax = Math.ceil((maxPrice * 1.16) / 50) * 50;
   renderChartDetails(entries);
@@ -418,7 +417,7 @@ function renderChart() {
   drawHistoryArea(ctx, entries, xFor, yFor, height, padding);
   drawHistoryLine(ctx, entries, xFor, yFor);
   drawCleanAxisLabels(ctx, width, height, padding, entries, yMin, yMax);
-  drawLowestPriceCallout(ctx, minEntry, xFor, yFor, width, height, padding);
+  drawCurrentPriceCallout(ctx, entries[entries.length - 1], xFor, yFor, width, height, padding);
 }
 
 function priceSeriesForCurrentRange() {
@@ -616,14 +615,14 @@ function drawCleanAxisLabels(ctx, width, height, padding, entries, yMin, yMax) {
   }
 }
 
-function drawLowestPriceCallout(ctx, lowest, xFor, yFor, width, height, padding) {
-  if (!lowest) return;
+function drawCurrentPriceCallout(ctx, current, xFor, yFor, width, height, padding) {
+  if (!current) return;
 
-  const originalX = xFor(lowest);
+  const originalX = xFor(current);
   const x = width - padding.right;
-  const y = yFor(lowest);
-  const label = formatCurrency(lowest.price, lowest.currency).replace("R$", "R$ ");
-  const store = sourceName(lowest.sourceId);
+  const y = yFor(current);
+  const label = formatCurrency(current.price, current.currency).replace("R$", "R$ ");
+  const store = sourceName(current.sourceId);
   const boxWidth = 132;
   const boxHeight = 58;
   const boxX = x - boxWidth - 14;
@@ -655,7 +654,7 @@ function drawLowestPriceCallout(ctx, lowest, xFor, yFor, width, height, padding)
   ctx.fillText(label, boxX + boxWidth / 2, boxY + 20);
   ctx.fillStyle = "#505a57";
   ctx.font = "11px Inter, system-ui, sans-serif";
-  ctx.fillText("MENOR", boxX + boxWidth / 2, boxY + 37);
+  ctx.fillText("AGORA", boxX + boxWidth / 2, boxY + 37);
   ctx.fillText(store.slice(0, 18), boxX + boxWidth / 2, boxY + 50);
 
   ctx.beginPath();
