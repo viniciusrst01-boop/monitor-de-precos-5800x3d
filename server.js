@@ -3,6 +3,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { URL } = require("node:url");
+const { execFile } = require("node:child_process");
+const { promisify } = require("node:util");
+
+const execFileAsync = promisify(execFile);
 
 const PORT = Number(process.env.PORT || 5174);
 const ROOT_DIR = __dirname;
@@ -564,23 +568,15 @@ function parseLocalizedNumber(raw, preferredCurrency = "") {
   const cleaned = String(raw || "").replace(/[^\d.,]/g, "");
   if (!cleaned) return null;
 
-  const currency = preferredCurrency.toUpperCase();
-  if (currency === "BRL") {
-    const value = Number(cleaned.replace(/\./g, "").replace(",", "."));
-    return Number.isFinite(value) ? value : null;
-  }
-
   const commaIndex = cleaned.lastIndexOf(",");
   const dotIndex = cleaned.lastIndexOf(".");
+  const decimalIndex = Math.max(commaIndex, dotIndex);
+  const hasDecimalCents = decimalIndex >= 0 && cleaned.length - decimalIndex - 1 === 2;
   let normalized = cleaned;
-  if (commaIndex > -1 && dotIndex > -1) {
-    normalized =
-      commaIndex > dotIndex
-        ? cleaned.replace(/\./g, "").replace(",", ".")
-        : cleaned.replace(/,/g, "");
-  } else if (commaIndex > -1) {
-    const decimals = cleaned.length - commaIndex - 1;
-    normalized = decimals === 2 ? cleaned.replace(",", ".") : cleaned.replace(/,/g, "");
+  if (hasDecimalCents) {
+    normalized = `${cleaned.slice(0, decimalIndex).replace(/[.,]/g, "")}.${cleaned.slice(decimalIndex + 1)}`;
+  } else {
+    normalized = cleaned.replace(/[.,]/g, "");
   }
 
   const value = Number(normalized);
@@ -691,18 +687,26 @@ function collectStructuredData(html, fallbackCurrency) {
 }
 
 function extractProductData(html, fallbackCurrency, pageUrl, allowedCurrencies = [DEFAULT_CURRENCY]) {
-  const title = extractMeta(html, ["og:title", "twitter:title"]) || extractTagText(html, "title");
+  const metaHtml = html.includes("\\u003cmeta")
+    ? html.replace(/\\u003c/g, "<").replace(/\\u003e/g, ">").replace(/\\"/g, '"')
+    : html;
+  const title = extractMeta(metaHtml, ["og:title", "twitter:title"]) || extractTagText(html, "title");
   const h1 = extractTagText(html, "h1");
-  const description = extractMeta(html, ["og:description", "description", "twitter:description"]);
+  const description = extractMeta(metaHtml, ["og:description", "description", "twitter:description"]);
   const structured = collectStructuredData(html, fallbackCurrency);
   const urlHint = productHintFromUrl(pageUrl);
-  const productName = structured.names.find(Boolean) || h1 || nonGenericTitle(title) || urlHint || pageUrl;
+  const productName =
+    structured.names.find((name) => /5800x3d/i.test(name)) ||
+    h1 ||
+    nonGenericTitle(title) ||
+    urlHint ||
+    pageUrl;
   const mainText = [productName, title, h1, description, urlHint].filter(Boolean).join(" | ");
   const bodyText = stripTags(html).slice(0, 160000);
   const allText = `${mainText} ${bodyText}`;
   const primaryProductText = `${mainText} ${extractPrimaryProductText(bodyText)}`;
 
-  const metaPrice = extractMeta(html, [
+  const metaPrice = extractMeta(metaHtml, [
     "product:price:amount",
     "og:price:amount",
     "twitter:data1",
@@ -710,7 +714,7 @@ function extractProductData(html, fallbackCurrency, pageUrl, allowedCurrencies =
     "sale_price"
   ]);
   const metaCurrency =
-    extractMeta(html, ["product:price:currency", "og:price:currency", "priceCurrency"]) ||
+    extractMeta(metaHtml, ["product:price:currency", "og:price:currency", "priceCurrency"]) ||
     detectCurrency(metaPrice, fallbackCurrency, allowedCurrencies);
   const priceCandidates = [...structured.prices];
 
@@ -729,7 +733,13 @@ function extractProductData(html, fallbackCurrency, pageUrl, allowedCurrencies =
 
   const stockStatus = detectStockStatus(allText, structured.availability);
   const match = evaluateProductMatch(mainText, allText);
-  const selectedPrice = selectBestPrice(priceCandidates, fallbackCurrency, allowedCurrencies);
+  let selectedPrice = selectBestPrice(priceCandidates, fallbackCurrency, allowedCurrencies);
+  if (isPichauUrl(pageUrl) && metaPrice) {
+    const pixPrice = parseLocalizedNumber(metaPrice, DEFAULT_CURRENCY);
+    if (isReasonablePriceForCurrency(pixPrice, DEFAULT_CURRENCY)) {
+      selectedPrice = { price: pixPrice, currency: DEFAULT_CURRENCY, source: "meta-pix" };
+    }
+  }
 
   return {
     title: productName,
@@ -885,6 +895,14 @@ function evaluateProductMatch(mainText, allText) {
 }
 
 async function fetchPage(url) {
+  if (isPichauUrl(url)) {
+    try {
+      return await fetchPageWithCurl(url);
+    } catch {
+      // Fall through to fetch when curl is unavailable in the host.
+    }
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 18000);
   try {
@@ -914,6 +932,47 @@ async function fetchPage(url) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function isPichauUrl(value) {
+  try {
+    return /(^|\.)pichau\.com\.br$/i.test(new URL(String(value || "")).hostname);
+  } catch {
+    return false;
+  }
+}
+
+async function fetchPageWithCurl(url) {
+  const curlCommand = process.platform === "win32" ? "curl.exe" : "curl";
+  const marker = "\n__MONITOR_HTTP_STATUS__:";
+  const { stdout } = await execFileAsync(
+    curlCommand,
+    [
+      "-L",
+      "--max-time",
+      "25",
+      "--silent",
+      "--show-error",
+      "--write-out",
+      `${marker}%{http_code}`,
+      "--user-agent",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36",
+      "--header",
+      "Accept-Language: pt-BR,pt;q=0.9,en-US;q=0.8",
+      url
+    ],
+    { encoding: "utf8", maxBuffer: 2 * 1024 * 1024, timeout: 30000 }
+  );
+  const markerIndex = stdout.lastIndexOf(marker);
+  if (markerIndex < 0) throw new Error("curl nao retornou status HTTP");
+  const body = stdout.slice(0, markerIndex);
+  const status = Number(stdout.slice(markerIndex + marker.length).trim());
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    finalUrl: url,
+    body
+  };
 }
 
 function isMercadoLivreUrl(value) {

@@ -66,7 +66,7 @@ Para a Pichau, use o mesmo token e rode:
 npm run collect:pichau
 ```
 
-O coletor confirma o codigo `100-100000651POF` e envia o valor a vista no PIX, sem confundir com o total parcelado.
+O coletor confirma o codigo `100-100000651POF` e envia o valor a vista no PIX, sem confundir com o total parcelado. O servidor tambem tenta um cliente HTTP alternativo para atualizar a Pichau pelo cron online quando a leitura normal recebe bloqueio.
 
 ## Contexto internacional
 

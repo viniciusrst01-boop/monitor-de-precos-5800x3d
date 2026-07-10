@@ -10,6 +10,7 @@ const ingestUrl = process.env.MONITOR_INGEST_URL || "https://monitor-de-precos-5
 const ingestToken = process.env.MONITOR_INGEST_TOKEN || "";
 const profileDir = process.env.PICHAU_PROFILE_DIR || path.join(__dirname, "..", ".collector-profile", "pichau");
 const headless = process.env.PICHAU_HEADLESS === "1";
+const assisted = process.env.PICHAU_ASSISTED !== "0";
 
 main().catch((error) => {
   console.error(`Coletor Pichau falhou: ${error.message}`);
@@ -31,12 +32,19 @@ async function main() {
   try {
     const page = context.pages()[0] || await context.newPage();
     await page.goto(productUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
-    await page.waitForTimeout(2000);
+    await page
+      .waitForSelector('[class*="price_vista"], [class*="price-vista"], [class*="pix"]', {
+        state: "attached",
+        timeout: 25000
+      })
+      .catch(() => {});
+    await page.waitForTimeout(1000);
 
     let reading;
     try {
       reading = await readProduct(page);
-    } catch {
+    } catch (error) {
+      if (!assisted) throw error;
       console.log("Nao encontrei o preco automaticamente. Deixe o produto e o preco a vista visiveis e pressione Enter aqui.");
       const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
       await rl.question("");
@@ -90,7 +98,7 @@ async function readProduct(page) {
     const mainText = document.querySelector("main")?.innerText || document.body?.innerText || "";
     const beforeInstallments = mainText.split(/parcelamento/i)[0];
     const labelledPixPrice = beforeInstallments.match(
-      /(?:a vista|a vista|\u00e0 vista)[\s\S]{0,80}?(R\$\s*\d{1,3}(?:\.\d{3})*,\d{2})/i
+      /(?:a vista|\u00e0 vista)[\s\S]{0,80}?(R\$\s*\d[\d.,]*\d)/i
     )?.[1];
     return {
       title,
@@ -118,11 +126,17 @@ async function readProduct(page) {
 
 function parseBRPrice(value) {
   const raw = String(value || "");
-  const money = raw.match(/(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*|\d+)(?:,(\d{2}))?/);
+  const money = raw.match(/(?:R\$\s*)?(\d[\d.,]*)/);
   if (!money) return null;
-  const integer = money[1].replace(/\./g, "");
-  const cents = money[2] || "00";
-  const parsed = Number(`${integer}.${cents}`);
+  const token = money[1];
+  const lastComma = token.lastIndexOf(",");
+  const lastDot = token.lastIndexOf(".");
+  const decimalIndex = Math.max(lastComma, lastDot);
+  const hasDecimalCents = decimalIndex >= 0 && token.length - decimalIndex - 1 === 2;
+  const normalized = hasDecimalCents
+    ? `${token.slice(0, decimalIndex).replace(/[.,]/g, "")}.${token.slice(decimalIndex + 1)}`
+    : token.replace(/[.,]/g, "");
+  const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
