@@ -2,11 +2,8 @@ const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const https = require("node:https");
 const { URL } = require("node:url");
-const { execFile } = require("node:child_process");
-const { promisify } = require("node:util");
-
-const execFileAsync = promisify(execFile);
 
 const PORT = Number(process.env.PORT || 5174);
 const ROOT_DIR = __dirname;
@@ -897,9 +894,9 @@ function evaluateProductMatch(mainText, allText) {
 async function fetchPage(url) {
   if (isPichauUrl(url)) {
     try {
-      return await fetchPageWithCurl(url);
+      return await fetchPageWithHttps(url);
     } catch {
-      // Fall through to fetch when curl is unavailable in the host.
+      // Fall through to fetch if the native HTTPS request fails.
     }
   }
 
@@ -942,37 +939,51 @@ function isPichauUrl(value) {
   }
 }
 
-async function fetchPageWithCurl(url) {
-  const curlCommand = process.platform === "win32" ? "curl.exe" : "curl";
-  const marker = "\n__MONITOR_HTTP_STATUS__:";
-  const { stdout } = await execFileAsync(
-    curlCommand,
-    [
-      "-L",
-      "--max-time",
-      "25",
-      "--silent",
-      "--show-error",
-      "--write-out",
-      `${marker}%{http_code}`,
-      "--user-agent",
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36",
-      "--header",
-      "Accept-Language: pt-BR,pt;q=0.9,en-US;q=0.8",
-      url
-    ],
-    { encoding: "utf8", maxBuffer: 2 * 1024 * 1024, timeout: 30000 }
-  );
-  const markerIndex = stdout.lastIndexOf(marker);
-  if (markerIndex < 0) throw new Error("curl nao retornou status HTTP");
-  const body = stdout.slice(0, markerIndex);
-  const status = Number(stdout.slice(markerIndex + marker.length).trim());
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    finalUrl: url,
-    body
-  };
+function fetchPageWithHttps(url, redirectCount = 0) {
+  return new Promise((resolve, reject) => {
+    const request = https.get(
+      url,
+      {
+        headers: {
+          accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8",
+          "cache-control": "no-cache",
+          "user-agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36"
+        }
+      },
+      (response) => {
+        const status = Number(response.statusCode || 0);
+        if (status >= 300 && status < 400 && response.headers.location && redirectCount < 4) {
+          response.resume();
+          const nextUrl = new URL(response.headers.location, url).toString();
+          fetchPageWithHttps(nextUrl, redirectCount + 1).then(resolve, reject);
+          return;
+        }
+
+        const chunks = [];
+        let bytes = 0;
+        response.on("data", (chunk) => {
+          bytes += chunk.length;
+          if (bytes > 2 * 1024 * 1024) {
+            request.destroy(new Error("pagina maior que 2 MB"));
+            return;
+          }
+          chunks.push(chunk);
+        });
+        response.on("end", () => {
+          resolve({
+            ok: status >= 200 && status < 300,
+            status,
+            finalUrl: url,
+            body: Buffer.concat(chunks).toString("utf8")
+          });
+        });
+      }
+    );
+    request.setTimeout(25000, () => request.destroy(new Error("timeout ao carregar a pagina")));
+    request.on("error", reject);
+  });
 }
 
 function isMercadoLivreUrl(value) {
