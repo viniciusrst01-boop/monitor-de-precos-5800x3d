@@ -1,5 +1,10 @@
 const path = require("node:path");
+const https = require("node:https");
+const { execFile } = require("node:child_process");
+const { promisify } = require("node:util");
 const readline = require("node:readline/promises");
+
+const execFileAsync = promisify(execFile);
 
 const DEFAULT_URL =
   "https://www.pichau.com.br/processador-amd-ryzen-7-5800x3d-8-core-16-threads-3-4ghz-4-5ghz-turbo-cache-100mb-am4-100-100000651pof";
@@ -20,6 +25,12 @@ main().catch((error) => {
 async function main() {
   if (!ingestToken) {
     throw new Error("Defina MONITOR_INGEST_TOKEN antes de rodar o coletor.");
+  }
+
+  const httpReading = await readProductWithHttps(productUrl).catch(() => null);
+  if (httpReading) {
+    await submitReading(httpReading, productUrl, "local-http-pix");
+    return;
   }
 
   const { chromium } = await loadPlaywright();
@@ -52,32 +63,117 @@ async function main() {
       reading = await readProduct(page);
     }
 
-    const response = await fetch(ingestUrl, {
-      method: "POST",
-      headers: {
-        "authorization": `Bearer ${ingestToken}`,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        sourceId,
-        url: page.url(),
-        title: reading.title,
-        price: reading.price,
-        currency: "BRL",
-        stockStatus: reading.stockStatus,
-        priceSource: "local-browser-pix"
-      })
-    });
-
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(payload.error || `HTTP ${response.status} ao enviar leitura`);
-    }
-
-    console.log(`Pichau: ${formatBRL(reading.price)} a vista enviado para o monitor.`);
+    await submitReading(reading, page.url(), "local-browser-pix");
   } finally {
     await context.close();
   }
+}
+
+async function submitReading(reading, url, priceSource) {
+  const response = await fetch(ingestUrl, {
+    method: "POST",
+    headers: {
+      "authorization": `Bearer ${ingestToken}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      sourceId,
+      url,
+      title: reading.title,
+      price: reading.price,
+      currency: "BRL",
+      stockStatus: reading.stockStatus,
+      priceSource
+    })
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error || `HTTP ${response.status} ao enviar leitura`);
+  }
+
+  console.log(`Pichau: ${formatBRL(reading.price)} a vista enviado para o monitor.`);
+}
+
+async function readProductWithHttps(url) {
+  const html = await fetchHtmlWithCurl(url).catch(() => fetchHtml(url));
+  if (!/5800x3d/i.test(html) || !/100-100000651pof/i.test(html)) {
+    throw new Error("A resposta HTTP nao confirmou o produto correto.");
+  }
+
+  const metaPrice = html.match(/product:price:amount\\?"\s+content=\\?"([^"\\]+)/i)?.[1];
+  const avistaPrice = html.match(/\\?"avista_price\\?"\s*:\s*(\d+(?:\.\d+)?)/i)?.[1];
+  const price = parseBRPrice(metaPrice || avistaPrice);
+  if (!price || price < 1700 || price >= 100000) {
+    throw new Error("Nao encontrei o preco a vista na resposta HTTP da Pichau.");
+  }
+
+  return {
+    title: "Processador AMD Ryzen 7 5800X3D 100-100000651POF",
+    price,
+    stockStatus: /schema\.org\\?\/InStock|produto disponivel/i.test(html) ? "in_stock" : "unknown"
+  };
+}
+
+async function fetchHtmlWithCurl(url) {
+  const curlCommand = process.platform === "win32" ? "curl.exe" : "curl";
+  const { stdout } = await execFileAsync(
+    curlCommand,
+    [
+      "-L",
+      "--max-time",
+      "25",
+      "--silent",
+      "--show-error",
+      "--user-agent",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36",
+      "--header",
+      "Accept-Language: pt-BR,pt;q=0.9,en-US;q=0.8",
+      url
+    ],
+    { encoding: "utf8", maxBuffer: 2 * 1024 * 1024, timeout: 30000 }
+  );
+  return stdout;
+}
+
+function fetchHtml(url, redirectCount = 0) {
+  return new Promise((resolve, reject) => {
+    const request = https.get(
+      url,
+      {
+        headers: {
+          accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8",
+          "user-agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36"
+        }
+      },
+      (response) => {
+        const status = Number(response.statusCode || 0);
+        if (status >= 300 && status < 400 && response.headers.location && redirectCount < 4) {
+          response.resume();
+          fetchHtml(new URL(response.headers.location, url).toString(), redirectCount + 1).then(resolve, reject);
+          return;
+        }
+        if (status < 200 || status >= 300) {
+          response.resume();
+          reject(new Error(`HTTP ${status}`));
+          return;
+        }
+
+        const chunks = [];
+        let bytes = 0;
+        response.on("data", (chunk) => {
+          bytes += chunk.length;
+          if (bytes > 2 * 1024 * 1024) request.destroy(new Error("pagina maior que 2 MB"));
+          else chunks.push(chunk);
+        });
+        response.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+      }
+    );
+    request.setTimeout(25000, () => request.destroy(new Error("timeout ao carregar a Pichau")));
+    request.on("error", reject);
+  });
 }
 
 async function loadPlaywright() {
