@@ -196,6 +196,7 @@ function renderSources() {
     const link = row.querySelector("a");
     const subtitle = row.querySelector(".source-subtitle");
     const form = row.querySelector(".source-controls");
+    const currentPriceField = row.querySelector(".current-price-field strong");
 
     title.textContent = source.store;
     const localCollectorState = isLocalCollectorState(source);
@@ -213,6 +214,7 @@ function renderSources() {
       : latest
       ? `${formatCurrency(latest.price, latest.currency)} · ${stockLabel(latest.stockStatus)}`
       : "sem preço aceito";
+    currentPriceField.textContent = latest ? formatCurrency(latest.price, latest.currency) : "--";
     const checked = source.lastCheckedAt ? `verificado ${relativeDate(source.lastCheckedAt)}` : "não verificado";
     const titleText = source.lastTitle ? ` · ${source.lastTitle}` : "";
     subtitle.textContent = `${currentPrice} · ${checked}${titleText}`;

@@ -628,9 +628,35 @@ select:focus {
 
 .source-controls {
   display: grid;
-  grid-template-columns: 110px 92px 92px auto;
+  grid-template-columns: 118px 110px 92px 92px auto;
   gap: 10px;
   align-items: end;
+}
+
+.current-price-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.current-price-field span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.current-price-field strong {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .compact-lock {
@@ -762,6 +788,10 @@ select:focus {
 
   .source-controls {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .source-controls .row-actions {
+    grid-column: 1 / -1;
   }
 }
 
