@@ -58,7 +58,7 @@ const DEFAULT_STATE = {
     currency: DEFAULT_CURRENCY,
     seedVersion: BRAZIL_SEED_VERSION,
     internationalSeedVersion: INTERNATIONAL_SEED_VERSION,
-    requireAnniversarySignals: true,
+    requireAnniversarySignals: false,
     intervalMinutes: 60,
     autoScan: true,
     webhookUrl: "",
@@ -206,7 +206,8 @@ function migrateState(loaded) {
     region: "BR",
     currency: DEFAULT_CURRENCY,
     seedVersion: BRAZIL_SEED_VERSION,
-    internationalSeedVersion: INTERNATIONAL_SEED_VERSION
+    internationalSeedVersion: INTERNATIONAL_SEED_VERSION,
+    requireAnniversarySignals: false
   };
   const rawSources = (Array.isArray(loaded.sources) ? loaded.sources : []).filter(
     (source) => source.id !== "powertec-5800x3d-10th"
@@ -1163,6 +1164,7 @@ async function scanSource(source) {
     source.lastStockStatus = data.stockStatus;
     source.lastError = "";
     source.lastMatchConfidence = data.match.confidence;
+    source.lastMatchStatus = data.match.status;
 
     if (!accepted) {
       addEvent(
@@ -1281,6 +1283,7 @@ async function scanInternationalSource(source) {
     source.lastStockStatus = data.stockStatus;
     source.lastError = "";
     source.lastMatchConfidence = data.match.confidence;
+    source.lastMatchStatus = data.match.status;
 
     if (accepted && !data.price) {
       source.lastStatus = "no_price";
@@ -1394,6 +1397,7 @@ async function ingestManualPrice(body) {
   source.lastStockStatus = snapshot.stockStatus;
   source.lastError = "";
   source.lastMatchConfidence = snapshot.matchConfidence;
+  source.lastMatchStatus = snapshot.matchStatus;
 
   state.history.push(snapshot);
   state.history = state.history.slice(-2500);

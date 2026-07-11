@@ -611,13 +611,24 @@ select:focus {
   min-width: 0;
 }
 
-.source-main a,
+.source-link-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.source-link-row a,
 .source-subtitle {
   display: block;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.version-pill {
+  flex: 0 0 auto;
 }
 
 .source-subtitle {

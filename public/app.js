@@ -144,7 +144,8 @@ function renderMetrics() {
     const latest = latestForSource(source.id);
     return (
       !isLocalCollectorState(source) &&
-      ["wrong_product", "base_model_unconfirmed", "not_matched", "no_price"].includes(source.lastStatus)
+      (["wrong_product", "not_matched", "no_price"].includes(source.lastStatus) ||
+        (app.data.settings.requireAnniversarySignals && source.lastStatus === "base_model_unconfirmed"))
     );
   }).length;
   elements.sourceHealth.textContent = errors
@@ -166,7 +167,7 @@ function renderMetrics() {
   elements.scanButton.disabled = Boolean(app.data.scanInProgress);
   elements.strictModeBadge.textContent = app.data.settings.requireAnniversarySignals
     ? "Modo rígido"
-    : "Aceita 5800X3D base";
+    : "Aceita versão normal";
   elements.strictModeBadge.className = `status-pill ${
     app.data.settings.requireAnniversarySignals ? "success" : "warning"
   }`;
@@ -193,6 +194,7 @@ function renderSources() {
     const latest = latestForSource(source.id);
     const title = row.querySelector("h3");
     const badge = row.querySelector(".status-pill");
+    const versionBadge = row.querySelector(".version-pill");
     const link = row.querySelector("a");
     const subtitle = row.querySelector(".source-subtitle");
     const form = row.querySelector(".source-controls");
@@ -203,6 +205,11 @@ function renderSources() {
     const waitingForLocalCollector = localCollectorState && !latest;
     badge.textContent = localCollectorState ? (latest ? "via coletor" : "coletor local") : statusLabel(source.lastStatus);
     badge.className = `status-pill ${localCollectorState ? (latest ? "success" : "warning") : statusTone(source.lastStatus)}`;
+    const versionStatus = latest?.matchStatus || source.lastMatchStatus || source.lastStatus;
+    const isBaseModel = versionStatus === "base_model_unconfirmed";
+    versionBadge.textContent = isBaseModel ? "sem 10 anos" : "";
+    versionBadge.className = `status-pill version-pill ${isBaseModel ? "warning" : "neutral"}`;
+    versionBadge.hidden = !isBaseModel;
     link.href = source.url;
     link.textContent = source.url;
     form.targetPrice.value = source.targetPrice || "";
