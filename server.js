@@ -848,9 +848,9 @@ function evaluateProductMatch(mainText, allText) {
   const normalizedAll = normalizeText(allText);
   const wrongInMain = PRODUCT_PROFILE.wrongProductPatterns.find((pattern) => pattern.test(mainText));
   const combinedText = `${normalizedMain} ${normalizedAll}`;
-  const hasRequiredSignals = PRODUCT_PROFILE.requiredSignals.every((term) =>
-    combinedText.includes(term)
-  );
+  const hasRequiredSignals =
+    PRODUCT_PROFILE.requiredSignals.every((term) => combinedText.includes(term)) ||
+    (combinedText.includes("5800x3d") && /\bamd\b/.test(combinedText));
   const hasMainModel = /\b5800x3d\b/i.test(mainText) || normalizedMain.includes("5800x3d");
   const hasAnniversarySignal = PRODUCT_PROFILE.anniversarySignals.some((term) =>
     normalizedAll.includes(term)
