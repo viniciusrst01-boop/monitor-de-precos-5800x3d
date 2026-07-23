@@ -103,9 +103,41 @@ function acceptedHistory() {
   return (app.data?.history || []).filter((entry) => entry.accepted && entry.price);
 }
 
+function availableHistory() {
+  return acceptedHistory().filter((entry) => entry.stockStatus !== "out_of_stock");
+}
+
+function currentAvailableSourceEntries() {
+  return (app.data?.sources || [])
+    .filter((source) => source.active !== false)
+    .filter((source) => source.lastPrice && source.lastStockStatus !== "out_of_stock")
+    .filter((source) => source.lastStatus === "ok" || source.localCollector)
+    .map((source) => ({
+      id: `current-${source.id}`,
+      sourceId: source.id,
+      store: source.store,
+      url: source.url,
+      checkedAt: source.lastCheckedAt || app.data?.settings?.lastScanFinishedAt || new Date().toISOString(),
+      price: Number(source.lastPrice),
+      currency: source.lastCurrency || "BRL",
+      stockStatus: source.lastStockStatus || "unknown",
+      title: source.lastTitle || source.store,
+      matchStatus: source.lastMatchStatus || "confirmed_anniversary",
+      matchConfidence: source.lastMatchConfidence || 100,
+      accepted: true
+    }));
+}
+
+function bestCurrentAvailableEntry() {
+  return currentAvailableSourceEntries().reduce(
+    (winner, entry) => (!winner || Number(entry.price) < Number(winner.price) ? entry : winner),
+    null
+  );
+}
+
 function latestAcceptedBySource() {
   const latest = new Map();
-  for (const entry of acceptedHistory()) {
+  for (const entry of currentAvailableSourceEntries()) {
     const current = latest.get(entry.sourceId);
     if (!current || new Date(entry.checkedAt) > new Date(current.checkedAt)) {
       latest.set(entry.sourceId, entry);
@@ -430,13 +462,22 @@ function renderChart() {
 }
 
 function priceSeriesForCurrentRange() {
-  const sorted = acceptedHistory().sort((a, b) => new Date(a.checkedAt) - new Date(b.checkedAt));
-  if (!sorted.length) return [];
+  const sorted = availableHistory().sort((a, b) => new Date(a.checkedAt) - new Date(b.checkedAt));
+  const currentBest = bestCurrentAvailableEntry();
+  if (!sorted.length) return currentBest ? [{ ...currentBest, chartIndex: 0 }] : [];
 
   const now = Date.now();
   const cutoff = now - app.chartDays * 24 * 60 * 60 * 1000;
   const filtered = sorted.filter((entry) => new Date(entry.checkedAt).getTime() >= cutoff);
   const rangeEntries = lowestKnownPricePerScan(sorted, filtered.length ? cutoff : Number.NEGATIVE_INFINITY);
+  if (currentBest) {
+    const last = rangeEntries[rangeEntries.length - 1];
+    const currentTime = new Date(currentBest.checkedAt).getTime();
+    const lastTime = last ? new Date(last.checkedAt).getTime() : 0;
+    if (!last || currentTime > lastTime || Number(last.price) !== Number(currentBest.price)) {
+      rangeEntries.push(currentBest);
+    }
+  }
   return rangeEntries.map((entry, index) => ({ ...entry, chartIndex: index }));
 }
 
